@@ -75,6 +75,27 @@ def strip_lowerdiag(L):
 def strip_symmetric(sym):
     return strip_lowerdiag(sym)
 
+def gram_schmidt_ordered(axes_distorted):
+    norms = torch.linalg.norm(axes_distorted, dim=1)
+    order = torch.argsort(norms, dim=1, descending=True)
+    order_reversed = torch.argsort(order, dim=1)
+    axes_ordered = torch.gather(axes_distorted, 2, order[:, None, :].expand(-1, 3, -1))
+    axes_ordered_ortho = gram_schmidt(axes_ordered)
+    axes_ortho = torch.gather(axes_ordered_ortho, 2, order_reversed[:, None, :].expand(-1, 3, -1))
+    return axes_ortho
+
+
+def gram_schmidt(axes_distorted):
+    a1, a2, a3 = axes_distorted[:, :, 0], axes_distorted[:, :, 1], axes_distorted[:, :, 2]
+    b1 = a1
+    proj_a2_b1 = ((a2[:, None, :] @ b1[:, :, None]) / (b1[:, None, :] @ b1[:, :, None]))[..., 0] * b1
+    b2 = a2 - proj_a2_b1
+    proj_a3_b1 = ((a3[:, None, :] @ b1[:, :, None]) / (b1[:, None, :] @ b1[:, :, None]))[..., 0] * b1
+    proj_a3_b2 = ((a3[:, None, :] @ b2[:, :, None]) / (b2[:, None, :] @ b2[:, :, None]))[..., 0] * b2
+    b3 = a3 - proj_a3_b1 - proj_a3_b2
+    axes_ortho = torch.stack([b1, b2, b3], dim=2)
+    return axes_ortho
+
 def build_rotation(r):
     norm = torch.sqrt(r[:,0]*r[:,0] + r[:,1]*r[:,1] + r[:,2]*r[:,2] + r[:,3]*r[:,3])
 
@@ -98,6 +119,52 @@ def build_rotation(r):
     R[:, 2, 2] = 1 - 2 * (x*x + y*y)
     return R
 
+def rotation_matrix_to_quaternion_batched(rotation_matrices):
+    """
+    Converts a batch of 3x3 rotation matrices to quaternions.
+
+    :param rotation_matrices: Tensor of shape (N, 3, 3) representing N 3x3 rotation matrices.
+    :return: Tensor of shape (N, 4) representing N quaternions (w, x, y, z).
+    """
+    assert rotation_matrices.shape[-2:] == (3, 3), "Input should be a batch of 3x3 matrices."
+    
+    # Ensure all calculations happen on the same device as the input tensor
+    device = rotation_matrices.device
+    dtype = rotation_matrices.dtype
+    
+    # Pre-allocate quaternion tensor on the correct device and dtype
+    N = rotation_matrices.shape[0]
+    quaternions = torch.zeros((N, 4), device=device, dtype=dtype)
+
+    # Extract rotation matrix elements
+    R = rotation_matrices
+    t = R[:, 0, 0] + R[:, 1, 1] + R[:, 2, 2]
+    
+    # Compute the trace-based branch
+    cond = t > 0
+    S = torch.sqrt(t[cond] + 1.0).to(device) * 2  # S = 4 * qw
+    quaternions[cond, 0] = 0.25 * S
+    quaternions[cond, 1] = (R[cond, 2, 1] - R[cond, 1, 2]) / S
+    quaternions[cond, 2] = (R[cond, 0, 2] - R[cond, 2, 0]) / S
+    quaternions[cond, 3] = (R[cond, 1, 0] - R[cond, 0, 1]) / S
+
+    # Compute the largest diagonal element branch
+    cond = ~cond
+    r_max = torch.argmax(R[cond].diagonal(dim1=-2, dim2=-1), dim=-1)
+    S_max = torch.sqrt(1.0 + 2.0 * R[cond, r_max, r_max] - t[cond]).to(device) * 2
+    idx = torch.arange(N, device=device)[cond]
+    
+    for i in range(3):
+        j = (i + 1) % 3
+        k = (i + 2) % 3
+        is_i = (r_max == i)
+        quaternions[idx[is_i], i+1] = 0.25 * S_max[is_i]
+        quaternions[idx[is_i], 0] = (R[idx[is_i], k, j] - R[idx[is_i], j, k]) / S_max[is_i]
+        quaternions[idx[is_i], j+1] = (R[idx[is_i], j, i] + R[idx[is_i], i, j]) / S_max[is_i]
+        quaternions[idx[is_i], k+1] = (R[idx[is_i], k, i] + R[idx[is_i], i, k]) / S_max[is_i]
+
+    return quaternions
+
 def build_scaling_rotation(s, r):
     L = torch.zeros((s.shape[0], 3, 3), dtype=torch.float, device="cuda")
     R = build_rotation(r)
@@ -108,6 +175,12 @@ def build_scaling_rotation(s, r):
 
     L = R @ L
     return L
+
+def build_convariance_matrix(rotation, scaling, scaling_modifier=1.0):
+    L = build_scaling_rotation(scaling_modifier * scaling, rotation)
+    actual_covariance = L @ L.transpose(1, 2)
+    symm = strip_symmetric(actual_covariance)
+    return symm
 
 def safe_state(silent):
     old_f = sys.stdout

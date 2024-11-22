@@ -17,6 +17,7 @@ from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec
     read_extrinsics_binary, read_intrinsics_binary, read_points3D_binary, read_points3D_text
 from scene.blender_fisheye_loader import read_extrinsics_blender_fisheye
 from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
+from utils.distortion_utils import approx_distortion_poly
 import numpy as np
 import json
 from pathlib import Path
@@ -24,6 +25,7 @@ from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 import glob
+import json
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -216,6 +218,198 @@ def readBlenderFisheyeInfo(path, images, eval, llffhold=8):
     
     return scene_info
 
+def quat_to_rotm(quats):
+    w, x, y, z = quats[:, 0], quats[:, 1], quats[:, 2], quats[:, 3]
+    N = len(w)
+    R = np.zeros((N, 3, 3))
+    R[:, 0, 0] = 1 - 2 * y**2 - 2 * z**2
+    R[:, 0, 1] = 2 * x * y - 2 * z * w
+    R[:, 0, 2] = 2 * x * z + 2 * y * w
+    R[:, 1, 0] = 2 * x * y + 2 * z * w
+    R[:, 1, 1] = 1 - 2 * x**2 - 2 * z**2
+    R[:, 1, 2] = 2 * y * z - 2 * x * w
+    R[:, 2, 0] = 2 * x * z - 2 * y * w
+    R[:, 2, 1] = 2 * y * z + 2 * x * w
+    R[:, 2, 2] = 1 - 2 * x**2 - 2 * y**2
+    return R
+
+# IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME
+def scannet_images(colmap_dir):
+    with open(os.path.join(colmap_dir, "dslr", "colmap", "images.txt")) as f:
+        lines = f.readlines()
+    lines = [line.strip() for line in lines if len(line) > 0 and line[0] != "#"]
+    lines = lines[::2]
+
+    # Sort by NAME
+    lines = sorted(lines, key=lambda x: x.split()[-1])
+    filenames = [line.split()[-1 ]for line in lines]
+
+    # Extract quaternions and positions
+    quats_list = [[float(p) for p in line.split()[1:5]] for line in lines]
+    pos_list = [[float(p) for p in line.split()[5:8]] for line in lines]
+    quats = np.array(quats_list)
+    pos = np.array(pos_list)
+
+    # Convert to transformation matrices
+    Rs = quat_to_rotm(quats)
+    Ts = np.zeros((len(lines), 4, 4), dtype=np.float32)
+    Ts[:, :3, :3] = Rs
+    Ts[:, :3, 3] = pos
+    Ts[:, 3, 3] = 1.0
+
+    return Ts, filenames
+
+# IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME
+def scannet_images_dict(colmap_dir):
+    with open(os.path.join(colmap_dir, "dslr", "colmap", "images.txt")) as f:
+        lines = f.readlines()
+    lines = [line.strip() for line in lines if len(line) > 0 and line[0] != "#"]
+    lines = lines[::2]
+
+    # Sort by NAME
+    lines = sorted(lines, key=lambda x: x.split()[-1])
+
+    dataDict = {}
+    for line in lines:
+        image_id = int(line.split()[0])
+        quat = [float(p) for p in line.split()[1:5]]
+        pos = [float(p) for p in line.split()[5:8]]
+        name = line.split()[-1]
+        camera_id = int(line.split()[-2])
+
+        # Convert to transformation matrices
+        R = quat_to_rotm(np.array([quat]))[0]
+        T = np.zeros((4, 4), dtype=np.float32)
+        T[:3, :3] = R
+        T[:3, 3] = pos
+
+        dataDict[image_id] = {"R": R, "T": T, "name": name, "camera_id": camera_id}
+
+    return dataDict
+
+# CAMERA_ID, MODEL, WIDTH, HEIGHT, PARAMS[]
+def scannet_cameras(colmap_dir):
+    with open(os.path.join(colmap_dir, "dslr", "colmap", "cameras.txt")) as f:
+        lines = f.readlines()
+    lines = [line.strip() for line in lines if len(line) > 0 and line[0] != "#"]
+    line_parts = lines[0].split()
+    intrinsics = {}
+    intrinsics["camera_id"] = int(line_parts[0])
+    intrinsics["model"] = line_parts[1]
+    intrinsics["width"] = int(line_parts[2])
+    intrinsics["height"] = int(line_parts[3])
+    intrinsics["fx"] = float(line_parts[4])
+    intrinsics["fy"] = float(line_parts[5])
+    intrinsics["cx"] = float(line_parts[6])
+    intrinsics["cy"] = float(line_parts[7])
+    intrinsics["distortion_params"] = np.array(list(map(float, line_parts[8:])))
+
+    return intrinsics
+
+
+# CAMERA_ID, MODEL, WIDTH, HEIGHT, PARAMS[]
+def scannet_cameras_dict(colmap_dir):
+    with open(os.path.join(colmap_dir, "dslr", "colmap", "cameras.txt")) as f:
+        lines = f.readlines()
+    lines = [line.strip() for line in lines if len(line) > 0 and line[0] != "#"]
+
+    dataDict = {}
+    for line in lines:
+        line_parts = line.split()
+        camera_id = int(line_parts[0])
+        camera_model = line_parts[1]
+        width = int(line_parts[2])
+        height = int(line_parts[3])
+        fx = float(line_parts[4])
+        fy = float(line_parts[5])
+        cx = float(line_parts[6])
+        cy = float(line_parts[7])
+        distortion_params = np.array(list(map(float, line_parts[8:])))
+        dataDict[camera_id] = {
+            "model": camera_model,
+            "width": width,
+            "height": height,
+            "fx": fx,
+            "fy": fy,
+            "cx": cx,
+            "cy": cy,
+            "distortion_params": distortion_params
+        }
+
+    # Approximate using polynomial
+    return dataDict                            
+
+
+def readScannetCameras(path):
+    # Read poses and intrinsics
+    images_dict = scannet_images_dict(path)
+    cameras_dict = scannet_cameras_dict(path)
+    cameras_dict = approx_distortion_poly(cameras_dict)
+
+    print("Approximation errors for polynomial distortion:")
+    for camera_id, camera in cameras_dict.items():
+        print(f" - Camera {camera_id} : mse = {camera['mse']:.1e}")
+
+    cam_infos = []
+    for image_id, image_data in images_dict.items():
+        uid = image_id
+
+        # Extrinsics
+        R = image_data["R"].T
+        T = image_data["T"][:3, 3]
+
+        # Intrinsics
+        cam = cameras_dict[image_data["camera_id"]]
+        image_width = cam["width"]
+        image_height = cam["height"]
+        FovX = 2 * np.arctan(image_width / (2 * cam["fx"]))
+        FovY = 2 * np.arctan(image_height / (2 * cam["fy"]))
+        image_name = image_data["name"]
+        image_path = os.path.join(path, "dslr", "resized_images", image_name)
+        image = Image.open(image_path)
+
+        cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
+                              image_path=image_path, image_name=image_name, width=image_width, height=image_height,
+                              lens_mask=None)
+        
+        cam_infos.append(cam_info)
+        
+    return cam_infos
+
+
+def readScannetppInfo(path, images, eval, llffhold=8):
+    # Read cam_infos
+    cam_infos = readScannetCameras(path) 
+
+    # Read train/test split
+    with open(os.path.join(path, "dslr", "train_test_lists.json")) as f:
+        train_test_lists = json.load(f)
+    if eval:
+        train_cam_infos = [c for idx, c in enumerate(cam_infos) if c.image_name in train_test_lists["train"]]
+        test_cam_infos = [c for idx, c in enumerate(cam_infos) if c.image_name in train_test_lists["test"]]
+    else:
+        train_cam_infos = cam_infos
+        test_cam_infos = []
+
+    nerf_normalization = getNerfppNorm(train_cam_infos)
+
+    # Load sparse point cloud
+    ply_path = os.path.join(path, "dslr", "colmap", "points3D.ply")
+    pcd = fetchPly(ply_path)
+
+    # Create scene_info
+    scene_info = SceneInfo(point_cloud=pcd,
+                           train_cameras=train_cam_infos,
+                           test_cameras=test_cam_infos,
+                           nerf_normalization=nerf_normalization,
+                           ply_path=ply_path)
+    
+    return scene_info
+
+
+
+    raise NotImplementedError("ScanNet++ data set not implemented yet!")
+
 def readColmapSceneInfo(path, images, eval, llffhold=8):
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
@@ -344,5 +538,6 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
 sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,
     "Blender" : readNerfSyntheticInfo,
-    "BlenderFisheye": readBlenderFisheyeInfo
+    "BlenderFisheye": readBlenderFisheyeInfo,
+    "ScanNetPP": readScannetppInfo
 }

@@ -28,6 +28,7 @@ from io import BytesIO
 import numpy as np
 import cv2
 import configparser
+from utils.general_utils import build_rotation, rotation_matrix_to_quaternion_batched
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -217,6 +218,30 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                         scaling_factor = gaussians.skybox_distance  / torch.norm(gaussians._xyz[is_skybox], dim=1)
                         gaussians._xyz[is_skybox] *= scaling_factor[:, None]
 
+                    # # Enforce ordering of scales
+                    # scales = gaussians.get_scaling
+                    # scales_idx = torch.argsort(scales).flip(-1)
+                    # scales_idx_diff = torch.diff(scales_idx, dim=-1)
+                    # scales_unsorted = torch.mean((scales_idx_diff < 0).float())
+
+                    # if iteration % 500 == 0:
+                    #     R_idx = scales_idx[:, None, :].expand(-1, 3, -1)
+                    #     scales = gaussians._scaling
+                    #     scales_sorted = torch.gather(scales, dim=-1, index=scales_idx)
+                    #     R = build_rotation(gaussians.get_rotation)
+                    #     R_sorted = torch.gather(R, dim=2, index=R_idx)
+                    #     dets = torch.det(R_sorted)
+                    #     R_sorted *= torch.sign(dets)[:, None, None]
+
+                    #     # Convert back to quaternion
+                    #     quats_sorted = rotation_matrix_to_quaternion_batched(R_sorted)
+
+                    #     # # Apply to gaussians
+                    #     # gaussians._scaling = scales_sorted
+                    #     # gaussians._rotation = quats_sorted
+
+
+                    # print(f"Unsorted scales: {scales_unsorted*100:.2f}%")
 
 
                     gaussians.optimizer.zero_grad(set_to_none = True) # gaussians._rotation has grad, but not gaussians.get_rotation
@@ -234,7 +259,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 viewpoint_cam_test = scene.getTrainCameras().copy()[test_id_unshuffled]
                 render_pkg_pinhole = render(viewpoint_cam_test, gaussians, pipe, background, render_coords=render_coords, fisheye=False)
                 render_pkg_fisheye = render(viewpoint_cam_test, gaussians, pipe, background, 
-                                            render_coords=render_coords, fisheye=True, is_test=True)
+                                            render_coords=render_coords, fisheye=True)
                 image_test_pinhole = render_pkg_pinhole["render"]
                 image_test_fisheye = render_pkg_fisheye["render"]
                 depth_image = render_pkg_fisheye["depth"]

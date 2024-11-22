@@ -149,7 +149,7 @@ class GaussianModel:
         if self.active_sh_degree < self.max_sh_degree:
             self.active_sh_degree += 1
 
-    def create_from_pcd_single(self, pcd : BasicPointCloud, spatial_lr_scale : float, add_skybox : bool = False):
+    def create_from_pcd_old(self, pcd : BasicPointCloud, spatial_lr_scale : float, add_skybox : bool = False):
         self.spatial_lr_scale = spatial_lr_scale
 
         # Add skybox
@@ -191,12 +191,13 @@ class GaussianModel:
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
 
 
-    def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float, add_skybox : bool = True):
+    def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float, add_skybox : bool = False):
         self.spatial_lr_scale = spatial_lr_scale
 
         # Add skybox
         points = np.asarray(pcd.points)
         colors = np.asarray(pcd.colors)
+        skybox_distance = None
         if add_skybox:
             max_distance = np.max(np.linalg.norm(points, axis=1))
             skybox_distance = 5.0 * max_distance
@@ -305,7 +306,10 @@ class GaussianModel:
         PlyData([el]).write(path)
 
     def reset_opacity(self):
-        is_skybox = torch.norm(self.get_xyz, dim=1) > self.skybox_distance * 0.9
+        if self.skybox_distance:
+            is_skybox = torch.norm(self.get_xyz, dim=1) > self.skybox_distance * 0.9
+        else:
+            is_skybox = torch.zeros((self.get_xyz.shape[0]), device="cuda", dtype=bool)
         max_opacity_new = torch.max(torch.ones_like(self.get_opacity) * 0.01, is_skybox.float()[:, None])
         opacities_new = inverse_sigmoid(torch.min(self.get_opacity, max_opacity_new))
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")

@@ -60,10 +60,12 @@ def jacobian_all(cartesian_coords, polyvals):
     return J_all
 
 def poly(phi, polyvals):
-    return polyvals[0] + polyvals[1] * phi + polyvals[2] * phi**2
+    return sum(c * phi**i for i, c in enumerate(polyvals))
+    #return polyvals[0] + polyvals[1] * phi + polyvals[2] * phi**2
 
 def poly_prime(phi, polyvals):
-    return polyvals[1] + 2 * polyvals[2] * phi
+    return sum(i * polyvals[i] * phi**(i-1) for i in range(1, len(polyvals)))
+    # return polyvals[1] + 2 * polyvals[2] * phi
 
 def transform_polar(spherical_coords, polyvals):
     r, theta, phi = spherical_coords[:, 0], spherical_coords[:, 1], spherical_coords[:, 2]

@@ -20,6 +20,7 @@ import scipy.spatial.transform
 import configparser
 from utils.diff_utils import jacobian_all
 import itertools
+from utils.general_utils import build_convariance_matrix, gram_schmidt, gram_schmidt_ordered
 
 def load_extrinsics_from_config(config):
     translation = np.array([float(config["extrinsics"]["tx"]), float(config["extrinsics"]["ty"]), float(config["extrinsics"]["tz"])])
@@ -164,35 +165,93 @@ def quaternion_multiply_batch(q1, q2):
 
 def get_axis_pc_np(axis=0, resolution=21, size=11, scaling=0.1, z_offset=0.0):
     # Create properties of the point cloud
-    num_points = (4 * resolution)
+    num_points = (12 * resolution)
     means3D = np.zeros((num_points, 3))
     scales = np.ones((num_points, 3)) * 0.005
-    scales[:, axis] = scaling
     rotations = np.zeros((num_points, 4))
     rotations[:, 0] = 1.0
     shs = np.zeros((num_points, 16, 3))
-    shs[:, 0, 0] = 2.0
     opacity = np.ones((num_points, 1))
     
     # Top edge (y_min)
     means3D[:resolution, 0] = np.linspace(-size/2, size/2, resolution)
     means3D[:resolution, 1] = -size/2
+    scales[:resolution, 0] = scaling
+    shs[:resolution, 0, 0] = 2.0
 
     # Right edge (x_max)
     means3D[resolution:2*resolution, 1] = np.linspace(-size/2, size/2, resolution)
     means3D[resolution:2*resolution, 0] = size/2
-    rotations[resolution:2*resolution, 0] = 1.0 / np.sqrt(2.0)
-    rotations[resolution:2*resolution, -1] = 1.0 / np.sqrt(2.0)
+    scales[resolution:2*resolution, 1] = scaling
+    shs[resolution:2*resolution, 0, 1] = 2.0
 
     # Bottom edge (y_max)
     means3D[2*resolution:3*resolution, 0] = np.linspace(size/2, -size/2, resolution)
     means3D[2*resolution:3*resolution, 1] = size/2
+    scales[2*resolution:3*resolution, 0] = scaling
+    shs[2*resolution:3*resolution, 0, 0] = 2.0
 
     # Left edge (x_min)
-    means3D[3*resolution:, 1] = np.linspace(size/2, -size/2, resolution)
-    means3D[3*resolution:, 0] = -size/2
-    rotations[3*resolution:, 0] = 1.0 / np.sqrt(2.0)
-    rotations[3*resolution:, -1] = 1.0 / np.sqrt(2.0)
+    means3D[3*resolution:4*resolution, 1] = np.linspace(size/2, -size/2, resolution)
+    means3D[3*resolution:4*resolution, 0] = -size/2
+    scales[3*resolution:4*resolution, 1] = scaling
+    shs[3*resolution:4*resolution, 0, 1] = 2.0
+
+    # Top edge (y_min) (back)
+    means3D[4*resolution:5*resolution, 0] = np.linspace(-size/2, size/2, resolution)
+    means3D[4*resolution:5*resolution, 1] = -size/2
+    means3D[4*resolution:5*resolution, 2] = size
+    scales[4*resolution:5*resolution, 0] = scaling
+    shs[4*resolution:5*resolution, 0, 0] = 2.0
+
+    # Right edge (x_max) (back)
+    means3D[5*resolution:6*resolution, 1] = np.linspace(-size/2, size/2, resolution)
+    means3D[5*resolution:6*resolution, 0] = size/2
+    means3D[5*resolution:6*resolution, 2] = size
+    scales[5*resolution:6*resolution, 1] = scaling
+    shs[5*resolution:6*resolution, 0, 1] = 2.0
+
+    # Bottom edge (y_max) (back)
+    means3D[6*resolution:7*resolution, 0] = np.linspace(size/2, -size/2, resolution)
+    means3D[6*resolution:7*resolution, 1] = size/2
+    means3D[6*resolution:7*resolution, 2] = size
+    scales[6*resolution:7*resolution, 0] = scaling
+    shs[6*resolution:7*resolution, 0, 0] = 2.0
+
+    # Left edge (x_min) (back)
+    means3D[7*resolution:8*resolution, 1] = np.linspace(size/2, -size/2, resolution)
+    means3D[7*resolution:8*resolution, 0] = -size/2
+    means3D[7*resolution:8*resolution, 2] = size
+    scales[7*resolution:8*resolution, 1] = scaling
+    shs[7*resolution:8*resolution, 0, 1] = 2.0
+
+    # Top left edge (x_min, y_min)
+    means3D[8*resolution:9*resolution, 0] = -size/2
+    means3D[8*resolution:9*resolution, 1] = -size/2
+    means3D[8*resolution:9*resolution, 2] = np.linspace(0, size, resolution)
+    scales[8*resolution:9*resolution, 2] = scaling
+    shs[8*resolution:9*resolution, 0, 2] = 2.0
+
+    # Top right edge (x_max, y_min)
+    means3D[9*resolution:10*resolution, 0] = size/2
+    means3D[9*resolution:10*resolution, 1] = -size/2
+    means3D[9*resolution:10*resolution, 2] = np.linspace(0, size, resolution)
+    scales[9*resolution:10*resolution, 2] = scaling
+    shs[9*resolution:10*resolution, 0, 2] = 2.0
+
+    # Bottom right edge (x_max, y_max)
+    means3D[10*resolution:11*resolution, 0] = size/2
+    means3D[10*resolution:11*resolution, 1] = size/2
+    means3D[10*resolution:11*resolution, 2] = np.linspace(0, size, resolution)
+    scales[10*resolution:11*resolution, 2] = scaling
+    shs[10*resolution:11*resolution, 0, 2] = 2.0
+
+    # Bottom left edge (x_min, y_max)
+    means3D[11*resolution:, 0] = -size/2
+    means3D[11*resolution:, 1] = size/2
+    means3D[11*resolution:, 2] = np.linspace(0, size, resolution)
+    scales[11*resolution:, 2] = scaling
+    shs[11*resolution:, 0, 2] = 2.0
 
     # Apply z offset
     means3D[:, 2] += z_offset
@@ -236,8 +295,8 @@ def get_cube_pc_np(resolution=100, size=2):
     rotations = np.zeros((num_points, 4))
     rotations[:, 0] = 1.0
     shs = np.zeros((num_points, 16, 3))
-    shs[:, 0, 2] = 2.0
-    opacity = np.ones((num_points, 1))
+    shs[:, 0, :] = 2.0
+    opacity = np.ones((num_points, 1)) * 0.2
 
     edges = [(main_axis, s1, s2) for main_axis in range(3) for s1 in [-1, 1] for s2 in [-1, 1]]
 
@@ -362,13 +421,18 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
     
     Background tensor (bg_color) must be on GPU!
     """
-
+    
     # Read config
     while True:
         config = configparser.ConfigParser()
         config.read("control.ini")
         if len(config.keys()) > 1:
             break
+
+
+    # White background for coordinate rendering
+    if config["mods"]["show_coords"] == "true":
+        bg_color = torch.ones(3).float().cuda()
 
     scaling_modifier = float(config["mods"]["scale_modifier"])
  
@@ -386,8 +450,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
         rotations = pc.get_rotation
         shs = pc.get_features
     else:
-        pc_edges = get_axis_pc_np(axis=0, resolution=3, size=2, scaling=float(config["mods"]["edge_length"]), z_offset=-1)
-        # pc_square = get_square_pc_np(resolution=100, size=2)
+        pc_edges = get_axis_pc_np(axis=0, resolution=int(config["mods"]["edge_count"]), size=2, scaling=float(config["mods"]["edge_length"]), z_offset=-1)
         pc_cube = get_cube_pc_np(resolution=100, size=2)
         means3D, opacity, scales, rotations, shs = np_to_torch(merge_pc(pc_edges, pc_cube))
         screenspace_points = torch.zeros_like(means3D, dtype=means3D.dtype, requires_grad=True, device="cuda") + 0
@@ -398,14 +461,14 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
         means2D = screenspace_points
 
     # Set up rasterization configuration
-    FOVX = viewpoint_camera.FoVx if not fisheye else np.deg2rad(float(config["pinhole"]["fov"]))
-    FOVY = viewpoint_camera.FoVy if not fisheye else np.deg2rad(float(config["pinhole"]["fov"]))
+    FOVX = viewpoint_camera.FoVx if not fisheye else float(config["pinhole"]["fov_x"])
+    FOVY = viewpoint_camera.FoVy if not fisheye else float(config["pinhole"]["fov_y"])
     tanfovx = math.tan(FOVX * 0.5)
     tanfovy = math.tan(FOVY * 0.5)
 
     if not is_test:
-        RESOLUTION_X = int(viewpoint_camera.image_width) if not fisheye else int(config["pinhole"]["resolution"])
-        RESOLUTION_Y = int(viewpoint_camera.image_height) if not fisheye else int(config["pinhole"]["resolution"])
+        RESOLUTION_X = int(viewpoint_camera.image_width) if not fisheye else int(config["pinhole"]["resolution_x"])
+        RESOLUTION_Y = int(viewpoint_camera.image_height) if not fisheye else int(config["pinhole"]["resolution_y"])
     else:
         RESOLUTION_X = int(config["test"]["resolution"])
         RESOLUTION_Y = int(config["test"]["resolution"])
@@ -449,12 +512,12 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
 
     # Geometric distortion based on fisheye lens
     if fisheye:
-        poly_coeffs = []
-        for i in range(24):
-            try:
-                poly_coeffs.append(float(config["mods"][f"theta_mod_{i}"]))
-            except:
-                pass
+        poly_coeffs = [0.000176684902, 0.99425082, 0.0530547525, -0.570079046, 0.399639263, -0.124184881, 0.0144251844]
+        # for i in range(24):
+        #     try:
+        #         poly_coeffs.append(float(config["mods"][f"theta_mod_{i}"]))
+        #     except:
+        #         pass
         
         if config["mods"]["jacobi"] == "true":
             # Compute jacobians
@@ -466,7 +529,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
 
         # Convert to spherical coordinates
         radius = torch.norm(means3D, dim=1)
-        theta = torch.arccos(means3D[:, 2] / radius) # TODO: Theta is zero for nan values
+        theta = torch.arccos(means3D[:, 2] / radius)
         phi = torch.atan2(means3D[:, 1], means3D[:, 0])
 
         # Remove points outside the field of view
@@ -505,14 +568,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
             axes_distorted = jacobians @ axes
 
             # Orthogonalize via Gram-Schmidt
-            a1, a2, a3 = axes_distorted[:, :, 0], axes_distorted[:, :, 1], axes_distorted[:, :, 2]
-            b1 = a1
-            proj_a2_b1 = ((a2[:, None, :] @ b1[:, :, None]) / (b1[:, None, :] @ b1[:, :, None]))[..., 0] * b1
-            b2 = a2 - proj_a2_b1
-            proj_a3_b1 = ((a3[:, None, :] @ b1[:, :, None]) / (b1[:, None, :] @ b1[:, :, None]))[..., 0] * b1
-            proj_a3_b2 = ((a3[:, None, :] @ b2[:, :, None]) / (b2[:, None, :] @ b2[:, :, None]))[..., 0] * b2
-            b3 = a3 - proj_a3_b1 - proj_a3_b2
-            axes_ortho = torch.stack([b1, b2, b3], dim=2)
+            axes_ortho = gram_schmidt_ordered(axes_distorted)
 
             # Seperate into scale and rotation
             scales_distorted = torch.norm(axes_ortho, dim=1)
@@ -526,21 +582,38 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
             scales = scales_distorted
             rotations = rot_quat
 
+    
+    # Precompute covariance matrices
+    cov3D = build_convariance_matrix(rotations, scales, scaling_modifier=scaling_modifier)
 
-    # Rasterize visible Gaussians to image, obtain their radii (on screen).
+
+    # # Rasterize visible Gaussians to image, obtain their radii (on screen).
+    # kwargs = {
+    #     "means3D": means3D,
+    #     "means2D": means2D,
+    #     "shs": shs,
+    #     "colors_precomp": None,
+    #     "opacities": opacity,
+    #     "scales": scales,
+    #     "rotations": rotations,
+    #     "cov3D_precomp": None
+    # }
+
     kwargs = {
         "means3D": means3D,
         "means2D": means2D,
         "shs": shs,
         "colors_precomp": None,
         "opacities": opacity,
-        "scales": scales,
-        "rotations": rotations,
-        "cov3D_precomp": None
+        "scales": None,
+        "rotations": None,
+        "cov3D_precomp": cov3D
     }
 
-    for key in ["means3D", "means2D", "shs", "opacities", "scales", "rotations"]:
-        assert not torch.any(torch.isnan(kwargs[key])), f"NaN values in {key}"
+
+    for key in kwargs.keys():
+        if kwargs[key] is not None:
+            assert not torch.any(torch.isnan(kwargs[key])), f"NaN values in {key}"
 
     rendered_image, radii, depth = rasterizer(**kwargs)
 

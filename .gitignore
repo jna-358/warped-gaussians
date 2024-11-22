@@ -1,0 +1,16 @@
+# Python files
+*.pyc
+__pycache__/
+
+# Binary data
+*.png
+*.jpg
+*.gif
+*.mp4
+*.mov
+*.avi
+*.JPG
+*.PNG
+
+# Bash files
+bash_history.txt

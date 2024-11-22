@@ -48,6 +48,9 @@ class Scene:
         elif os.path.exists(os.path.join(args.source_path, "blender-fisheye")):
             print("Found blender-fisheye folder, assuming Blender fisheye data set!")
             scene_info = sceneLoadTypeCallbacks["BlenderFisheye"](args.source_path, args.white_background, args.eval)
+        elif os.path.exists(os.path.join(args.source_path, "dslr", "scannetpp")):
+            print("Found scannetpp folder, assuming ScanNet++ data set!")
+            scene_info = sceneLoadTypeCallbacks["ScanNetPP"](args.source_path, args.white_background, args.eval)
         else:
             assert False, "Could not recognize scene type!"
 
