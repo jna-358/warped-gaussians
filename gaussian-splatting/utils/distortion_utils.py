@@ -83,9 +83,10 @@ def approx_distortion_poly(cameras_dict):
         theta_post = spherical_post[1]
         indices_violoation = np.where(np.diff(theta_post) < 0)[0]
         filter_index = len(theta_post)
+        max_theta_pre = None
         if len(indices_violoation) > 0:
             filter_index = indices_violoation[0]
-            # print(f"Monotonicity violated, cutting at index {filter_index}")
+            max_theta_pre = theta_pre[filter_index]
         theta_post_filtered = theta_post[:filter_index]
         theta_pre_filtered = theta_pre[:filter_index]
 
@@ -103,5 +104,6 @@ def approx_distortion_poly(cameras_dict):
         cameras_dict_out[camera_id] = intrinsics.copy()
         cameras_dict_out[camera_id]["distortion_params"] = coeffs
         cameras_dict_out[camera_id]["mse"] = mse
+        cameras_dict_out[camera_id]["max_fov_monotonic"] = max_theta_pre
 
     return cameras_dict_out

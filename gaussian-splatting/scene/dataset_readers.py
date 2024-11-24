@@ -39,6 +39,8 @@ class CameraInfo(NamedTuple):
     width: int
     height: int
     lens_mask: np.array = None
+    distortion_params: np.array = None
+    FovMax: np.float32 = None
 
 class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
@@ -133,7 +135,6 @@ def readBlenderFisheyeCameras(path):
         # Extract R and T
         R = extrinsic_matrix[:3, :3].T
         T = extrinsic_matrix[:3, 3]
-
 
         # Dummy values for extrinsics
         FovY = 1.0
@@ -367,10 +368,12 @@ def readScannetCameras(path):
         image_name = image_data["name"]
         image_path = os.path.join(path, "dslr", "resized_images", image_name)
         image = Image.open(image_path)
+        distortion_params = cam["distortion_params"]
+        max_fov = cam["max_fov_monotonic"]
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=image_width, height=image_height,
-                              lens_mask=None)
+                              lens_mask=None, distortion_params=distortion_params, FovMax=max_fov)
         
         cam_infos.append(cam_info)
         

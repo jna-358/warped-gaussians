@@ -421,7 +421,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
     
     Background tensor (bg_color) must be on GPU!
     """
-    
+
     # Read config
     while True:
         config = configparser.ConfigParser()
@@ -461,17 +461,14 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
         means2D = screenspace_points
 
     # Set up rasterization configuration
-    FOVX = viewpoint_camera.FoVx if not fisheye else float(config["pinhole"]["fov_x"])
-    FOVY = viewpoint_camera.FoVy if not fisheye else float(config["pinhole"]["fov_y"])
+    FOVX = viewpoint_camera.FoVx
+    FOVY = viewpoint_camera.FoVy
     tanfovx = math.tan(FOVX * 0.5)
     tanfovy = math.tan(FOVY * 0.5)
 
-    if not is_test:
-        RESOLUTION_X = int(viewpoint_camera.image_width) if not fisheye else int(config["pinhole"]["resolution_x"])
-        RESOLUTION_Y = int(viewpoint_camera.image_height) if not fisheye else int(config["pinhole"]["resolution_y"])
-    else:
-        RESOLUTION_X = int(config["test"]["resolution"])
-        RESOLUTION_Y = int(config["test"]["resolution"])
+    
+    RESOLUTION_X = viewpoint_camera.image_width
+    RESOLUTION_Y = viewpoint_camera.image_height
 
     K = getProjectionMatrix(
         znear=float(config["render-distance"]["znear"]), 
@@ -512,7 +509,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
 
     # Geometric distortion based on fisheye lens
     if fisheye:
-        poly_coeffs = [0.000176684902, 0.99425082, 0.0530547525, -0.570079046, 0.399639263, -0.124184881, 0.0144251844]
+        poly_coeffs = viewpoint_camera.distortion_params
         # for i in range(24):
         #     try:
         #         poly_coeffs.append(float(config["mods"][f"theta_mod_{i}"]))
