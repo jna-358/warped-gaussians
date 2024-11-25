@@ -112,38 +112,123 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
     sys.stdout.write('\n')
     return cam_infos
 
+def hashNumpyDict(d):
+    hash_list = []
+    for key in sorted(d.keys()):
+        hash_list.append(hash(key))
+        hash_list.append(hash(d[key].tobytes()))
+    return hash(tuple(hash_list))
+
+def npz2dict(npz, keys=[]):
+    return {key: npz[key] for key in keys}
+
+def approximate_fisheye_blender(intrinsics):
+    coeffs = np.array([intrinsics[f"fisheye_k{i}"] for i in range(5)]) * (-1) # Negative sign added for strage reasons
+    print(f"Polynomial coefficients: {coeffs}")
+
+    # Get the sensor size (mm)
+    sensor_width_mm = intrinsics["sensor_width_mm"]
+    sensor_height_mm = intrinsics["sensor_height_mm"]
+    print(f"Sensor size: {sensor_width_mm}mm x {sensor_height_mm}mm")
+
+    # Set the field of view
+    fov = np.pi / 2
+    focal_length = sensor_width_mm / (2 * np.tan(fov / 2))
+
+    # Get the resolution
+    res_x = intrinsics["resolution_x"]
+    res_y = intrinsics["resolution_y"]
+
+    # Compute the maximum angle
+    poly = np.polynomial.Polynomial(coeffs)
+    max_dist = np.sqrt(sensor_width_mm ** 2 + sensor_height_mm ** 2) / 2
+
+    # Fit polynomial to the inverted data theta(r2) -> r2(theta)
+    r2 = np.linspace(0, max_dist, 1000)
+    theta_in = poly(r2)
+    theta_out = np.arctan2(r2, focal_length)
+
+    poly_full = np.polyfit(theta_in, theta_out, 8)[::-1]
+    theta_out_pred = np.sum(c * theta_in ** i for i, c in enumerate(poly_full)) # custom_polyval(poly_full, theta_in)
+    error = np.sqrt(np.mean((theta_out_pred - theta_out) ** 2))
+    print(f"Approximation error: {error:.2e} rad")
+    
+    return {
+        **intrinsics,
+        "focal_length": focal_length,
+        "fov": fov,
+        "max_dist": max_dist,
+        "rmse": error,
+        "distortion_params": poly_full
+    }
+
 def readBlenderFisheyeCameras(path):
     image_paths = sorted(glob.glob(os.path.join(path, "image", "*.png")))
     names = [os.path.splitext(os.path.basename(p))[0] for p in image_paths]
     image_data_paths = [(name, os.path.join(path, "image", name + ".png"), os.path.join(path, "metadata", name + ".npz")) for name in names]
+    image_data_paths = {
+        name: {
+            "image_path": os.path.join(path, "image", name + ".png"), 
+            "metadata_path":  os.path.join(path, "metadata", name + ".npz")
+        } for name in names}
 
+    # Extract intrinsics from metadata (missing: res_x, res_y, sensor_width_mm, sensor_height_mm)
+    intrinsics_keys = [
+        "K",
+        "sensor_width_mm",
+        "sensor_height_mm",
+        "resolution_x",
+        "resolution_y",
+        "fisheye_fov",
+        "fisheye_lens",
+        "fisheye_k0",
+        "fisheye_k1",
+        "fisheye_k2",
+        "fisheye_k3",
+        "fisheye_k4"]
+    intrinsics = {
+        name: npz2dict(np.load(image_data_paths[name]["metadata_path"]), keys=intrinsics_keys) for name in names
+    }
+
+    # Extract extrinsics from metadata
+    extrinsics_keys = [
+        "camera_matrix"]
+    extrinsics = {
+        name: npz2dict(np.load(image_data_paths[name]["metadata_path"]), keys=extrinsics_keys) for name in names
+    }
+
+    # Find distinct intrinsics
+    intrinsics_unique = {}
+    for name in names:
+        h = hashNumpyDict(intrinsics[name])
+        if h not in intrinsics_unique:
+            intrinsics_unique[h] = intrinsics[name]
+    intrinsics_unique = {h: approximate_fisheye_blender(intrinsics) for h, intrinsics in intrinsics_unique.items()}
+
+    
     R_corr = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
 
     # Load cam_infos
     cam_infos = []
-    for idx, (name, image_path, metadata_path) in enumerate(image_data_paths):
-        # Read metadata
-        metadata = np.load(metadata_path)
-
-        # Get extrinsics
-        extrinsic_matrix = metadata["camera_matrix"]
+    for idx, name in enumerate(names):
+        # Extrinsics
+        extrinsic_matrix = extrinsics[name]["camera_matrix"]
         extrinsic_matrix[:3, :3] = extrinsic_matrix[:3, :3] @ R_corr
-
-        # Convert cam2world to world2cam
         extrinsic_matrix = np.linalg.inv(extrinsic_matrix)
-
-        # Extract R and T
         R = extrinsic_matrix[:3, :3].T
         T = extrinsic_matrix[:3, 3]
 
-        # Dummy values for extrinsics
-        FovY = 1.0
-        FovX = 1.0
-        width = 100
-        height = 100
-        uid = 0
+        # Intrinsics
+        intrinsics_hash = hashNumpyDict(intrinsics[name])
+        FovY = intrinsics_unique[intrinsics_hash]["fov"]
+        FovX = intrinsics_unique[intrinsics_hash]["fov"]
+        width = intrinsics_unique[intrinsics_hash]["resolution_x"].item()
+        height = intrinsics_unique[intrinsics_hash]["resolution_y"].item()
+        uid = idx
+        distortion_params = intrinsics_unique[intrinsics_hash]["distortion_params"]
 
         # Load image
+        image_path = image_data_paths[name]["image_path"]
         image = Image.open(image_path)
 
         # Load lens mask (if available)
@@ -151,7 +236,9 @@ def readBlenderFisheyeCameras(path):
         lens_mask = Image.open(lens_mask_path) if os.path.exists(lens_mask_path) else None
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
-                              image_path=image_path, image_name=name, width=width, height=height, lens_mask=lens_mask)
+                              image_path=image_path, image_name=name, width=width, 
+                              height=height, lens_mask=lens_mask,
+                              distortion_params=distortion_params)
         cam_infos.append(cam_info)
     
     return cam_infos
