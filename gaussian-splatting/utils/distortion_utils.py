@@ -61,7 +61,7 @@ def to_cartesian(spherical):
     z = r * np.cos(theta)
     return np.vstack((x, y, z))
 
-def approx_distortion_poly(cameras_dict):
+def approx_distortion_poly(cameras_dict, fisheye_poly_degree=8):
     cameras_dict_out = {}
 
     for camera_id, intrinsics in cameras_dict.items():
@@ -96,7 +96,7 @@ def approx_distortion_poly(cameras_dict):
         theta_pre_filtered = theta_pre_filtered[~isnan]
 
         # Fit polynomial
-        coeffs = np.polyfit(theta_pre_filtered, theta_post_filtered, 6)[::-1]
+        coeffs = np.polyfit(theta_pre_filtered, theta_post_filtered, fisheye_poly_degree)[::-1]
         theta_post_fit = sum(ci * theta_pre_filtered**i for i, ci in enumerate(coeffs))
         mse = np.mean((theta_post_filtered - theta_post_fit)**2)
 

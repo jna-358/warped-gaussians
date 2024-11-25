@@ -149,8 +149,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             render_pkg = render(viewpoint_cam, 
                                 gaussians, pipe, bg, 
-                                fisheye=True, render_coords=False, 
-                                is_test=False)
+                                render_coords=False)
             image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
             # Loss
@@ -159,9 +158,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             Ll1 = l1_loss(image, gt_image)
             # loss_scaling = scaling_loss(gaussians.get_scaling)
             loss = (1.0 - opt.lambda_dssim) * Ll1 \
-                + opt.lambda_dssim * (1.0 - ssim(image, gt_image)) #\
-                # + lamda_scaling * loss_scaling
-            loss.backward() # Scale not populated with gradient, check covariance matrix
+                + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+            loss.backward()
 
             iter_end.record()
 
@@ -177,11 +175,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             # # Log and save
             if config["stop-training"]["skip-training"] != "true":
-                renderKWArgs = {"fisheye": True}
-                training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background), renderKWArgs)
-            # if (iteration in saving_iterations):
-            #     print("\n[ITER {}] Saving Gaussians".format(iteration))
-            #     scene.save(iteration)
+                training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, dataset, scene, render, (pipe, background), {})
 
             # Densification
             if config["stop-training"]["skip-training"] != "true":
@@ -218,32 +212,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                         scaling_factor = gaussians.skybox_distance  / torch.norm(gaussians._xyz[is_skybox], dim=1)
                         gaussians._xyz[is_skybox] *= scaling_factor[:, None]
 
-                    # # Enforce ordering of scales
-                    # scales = gaussians.get_scaling
-                    # scales_idx = torch.argsort(scales).flip(-1)
-                    # scales_idx_diff = torch.diff(scales_idx, dim=-1)
-                    # scales_unsorted = torch.mean((scales_idx_diff < 0).float())
-
-                    # if iteration % 500 == 0:
-                    #     R_idx = scales_idx[:, None, :].expand(-1, 3, -1)
-                    #     scales = gaussians._scaling
-                    #     scales_sorted = torch.gather(scales, dim=-1, index=scales_idx)
-                    #     R = build_rotation(gaussians.get_rotation)
-                    #     R_sorted = torch.gather(R, dim=2, index=R_idx)
-                    #     dets = torch.det(R_sorted)
-                    #     R_sorted *= torch.sign(dets)[:, None, None]
-
-                    #     # Convert back to quaternion
-                    #     quats_sorted = rotation_matrix_to_quaternion_batched(R_sorted)
-
-                    #     # # Apply to gaussians
-                    #     # gaussians._scaling = scales_sorted
-                    #     # gaussians._rotation = quats_sorted
-
-
-                    # print(f"Unsorted scales: {scales_unsorted*100:.2f}%")
-
-
                     gaussians.optimizer.zero_grad(set_to_none = True) # gaussians._rotation has grad, but not gaussians.get_rotation
 
                 # if (iteration in checkpoint_iterations):
@@ -257,10 +225,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 test_id_unshuffled = unshuffled_indices[test_id]
                 render_coords = config["mods"]["show_coords"] == "true"
                 viewpoint_cam_test = scene.getTrainCameras().copy()[test_id_unshuffled]
-                render_pkg_pinhole = render(viewpoint_cam_test, gaussians, pipe, background, render_coords=render_coords, fisheye=False)
                 render_pkg_fisheye = render(viewpoint_cam_test, gaussians, pipe, background, 
-                                            render_coords=render_coords, fisheye=True)
-                image_test_pinhole = render_pkg_pinhole["render"]
+                                            render_coords=render_coords)
                 image_test_fisheye = render_pkg_fisheye["render"]
                 depth_image = render_pkg_fisheye["depth"]
 
@@ -268,10 +234,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 image_gt = viewpoint_cam_test.original_image.to("cuda")
                 image_error = torch.abs(image_test_fisheye - image_gt)
-                images = [image_test_fisheye] # , image_gt, image_both, image_error]
+                images = [image_test_fisheye]
 
-                if config["mods"]["show_original"] == "true":
-                    images.append(image_test_pinhole)
                 if config["mods"]["show_gt"] == "true":
                     images.append(image_gt)
                 if config["mods"]["show_error"] == "true":
@@ -288,7 +252,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 os.makedirs(render_dir, exist_ok=True)
                 viewpoint_stack = scene.getTrainCameras().copy()
                 for viewpoint_cam in tqdm(viewpoint_stack, desc="Rendering all viewpoints"):
-                    render_pkg = render(viewpoint_cam, gaussians, pipe, background, fisheye=True, render_coords=False)
+                    render_pkg = render(viewpoint_cam, gaussians, pipe, background, render_coords=False)
                     image = render_pkg["render"]
                     image = torch.clamp(image, 0.0, 1.0)
                     image = (image * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy()
@@ -319,7 +283,44 @@ def prepare_output_and_logger(args):
         print("Tensorboard not available: not logging progress")
     return tb_writer
 
-def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, renderKWArgs):
+# def training_report_old(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, renderKWArgs):
+#     if tb_writer:
+#         tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1.item(), iteration)
+#         tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
+#         tb_writer.add_scalar('iter_time', elapsed, iteration)
+
+#     # Report test and samples of training set
+#     if iteration in testing_iterations:
+#         torch.cuda.empty_cache()
+#         validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
+#                               {'name': 'train', 'cameras' : scene.getTrainCameras()})
+
+#         for config in validation_configs:
+#             if config['cameras'] and len(config['cameras']) > 0:
+#                 l1_test = 0.0
+#                 psnr_test = 0.0
+#                 for idx, viewpoint in enumerate(config['cameras']):
+#                     image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs, **renderKWArgs)["render"], 0.0, 1.0)
+#                     gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
+#                     if tb_writer and (idx < 5):
+#                         tb_writer.add_images(config['name'] + "_view_{}/render".format(viewpoint.image_name), image[None], global_step=iteration)
+#                         if iteration == testing_iterations[0]:
+#                             tb_writer.add_images(config['name'] + "_view_{}/ground_truth".format(viewpoint.image_name), gt_image[None], global_step=iteration)
+#                     l1_test += l1_loss(image, gt_image).mean().double()
+#                     psnr_test += psnr(image, gt_image).mean().double()
+#                 psnr_test /= len(config['cameras'])
+#                 l1_test /= len(config['cameras'])          
+#                 print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))
+#                 if tb_writer:
+#                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - l1_loss', l1_test, iteration)
+#                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
+
+#         if tb_writer:
+#             tb_writer.add_histogram("scene/opacity_histogram", scene.gaussians.get_opacity, iteration)
+#             tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
+#         torch.cuda.empty_cache()
+
+def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, dataset, scene : Scene, renderFunc, renderArgs, renderKWArgs):
     if tb_writer:
         tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1.item(), iteration)
         tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
@@ -329,21 +330,47 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
     if iteration in testing_iterations:
         torch.cuda.empty_cache()
         validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
-                              {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(5, 30, 5)]})
+                              {'name': 'train', 'cameras' : scene.getTrainCameras()})
+        render_types = ["gt", "rgb", "error", "depth"]
+        
+        # Create dirs
+        os.makedirs(iter_path:=os.path.join(dataset.model_path, "render", f"iter_{iteration}"))
+        for config in validation_configs:
+            for render_type in render_types:
+                os.makedirs(os.path.join(iter_path, config['name'], render_type))
 
         for config in validation_configs:
             if config['cameras'] and len(config['cameras']) > 0:
                 l1_test = 0.0
                 psnr_test = 0.0
-                for idx, viewpoint in enumerate(config['cameras']):
-                    image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs, **renderKWArgs)["render"], 0.0, 1.0)
+                for idx, viewpoint in enumerate(tqdm(config['cameras'], desc=f"evaluation {config['name']}")):
                     gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
-                    if tb_writer and (idx < 5):
-                        tb_writer.add_images(config['name'] + "_view_{}/render".format(viewpoint.image_name), image[None], global_step=iteration)
-                        if iteration == testing_iterations[0]:
-                            tb_writer.add_images(config['name'] + "_view_{}/ground_truth".format(viewpoint.image_name), gt_image[None], global_step=iteration)
-                    l1_test += l1_loss(image, gt_image).mean().double()
-                    psnr_test += psnr(image, gt_image).mean().double()
+                    render_pkg = renderFunc(viewpoint, scene.gaussians, *renderArgs, **renderKWArgs)
+                    rgb = torch.clamp(render_pkg["render"], 0.0, 1.0)
+                    depth = render_pkg["depth"]
+                    depth = (depth - torch.min(depth)) / (torch.max(depth) - torch.min(depth))
+                    error = torch.abs(rgb - gt_image)
+
+                    images = {
+                        "gt": gt_image,
+                        "rgb": rgb,
+                        "error": error,
+                        "depth": depth
+                    }
+
+                    for render_type, image in images.items():
+                        image = (image * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy()
+                        if image.shape[2] == 1:
+                            image = np.repeat(image, 3, axis=2)
+                        image = Image.fromarray(image)
+                        image.save(os.path.join(iter_path, config['name'], render_type, viewpoint.image_name + ".png"))
+                    
+                    # if tb_writer and (idx < 5):
+                        # tb_writer.add_images(config['name'] + "_view_{}/render".format(viewpoint.image_name), image[None], global_step=iteration)
+                        # if iteration == testing_iterations[0]:
+                        #     tb_writer.add_images(config['name'] + "_view_{}/ground_truth".format(viewpoint.image_name), gt_image[None], global_step=iteration)
+                    l1_test += l1_loss(rgb, gt_image).mean().double()
+                    psnr_test += psnr(rgb, gt_image).mean().double()
                 psnr_test /= len(config['cameras'])
                 l1_test /= len(config['cameras'])          
                 print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))

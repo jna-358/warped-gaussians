@@ -40,7 +40,7 @@ class CameraInfo(NamedTuple):
     height: int
     lens_mask: np.array = None
     distortion_params: np.array = None
-    FovMax: np.float32 = None
+    fisheye_fov: np.array = None
 
 class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
@@ -122,7 +122,7 @@ def hashNumpyDict(d):
 def npz2dict(npz, keys=[]):
     return {key: npz[key] for key in keys}
 
-def approximate_fisheye_blender(intrinsics):
+def approximate_fisheye_blender(intrinsics, fisheye_poly_degree=8):
     coeffs = np.array([intrinsics[f"fisheye_k{i}"] for i in range(5)]) * (-1) # Negative sign added for strage reasons
     print(f"Polynomial coefficients: {coeffs}")
 
@@ -148,7 +148,7 @@ def approximate_fisheye_blender(intrinsics):
     theta_in = poly(r2)
     theta_out = np.arctan2(r2, focal_length)
 
-    poly_full = np.polyfit(theta_in, theta_out, 8)[::-1]
+    poly_full = np.polyfit(theta_in, theta_out, fisheye_poly_degree)[::-1]
     theta_out_pred = np.sum(c * theta_in ** i for i, c in enumerate(poly_full)) # custom_polyval(poly_full, theta_in)
     error = np.sqrt(np.mean((theta_out_pred - theta_out) ** 2))
     print(f"Approximation error: {error:.2e} rad")
@@ -162,7 +162,7 @@ def approximate_fisheye_blender(intrinsics):
         "distortion_params": poly_full
     }
 
-def readBlenderFisheyeCameras(path):
+def readBlenderFisheyeCameras(path, fisheye_poly_degree=8):
     image_paths = sorted(glob.glob(os.path.join(path, "image", "*.png")))
     names = [os.path.splitext(os.path.basename(p))[0] for p in image_paths]
     image_data_paths = [(name, os.path.join(path, "image", name + ".png"), os.path.join(path, "metadata", name + ".npz")) for name in names]
@@ -203,7 +203,7 @@ def readBlenderFisheyeCameras(path):
         h = hashNumpyDict(intrinsics[name])
         if h not in intrinsics_unique:
             intrinsics_unique[h] = intrinsics[name]
-    intrinsics_unique = {h: approximate_fisheye_blender(intrinsics) for h, intrinsics in intrinsics_unique.items()}
+    intrinsics_unique = {h: approximate_fisheye_blender(intrinsics, fisheye_poly_degree=fisheye_poly_degree) for h, intrinsics in intrinsics_unique.items()}
 
     
     R_corr = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
@@ -226,6 +226,7 @@ def readBlenderFisheyeCameras(path):
         height = intrinsics_unique[intrinsics_hash]["resolution_y"].item()
         uid = idx
         distortion_params = intrinsics_unique[intrinsics_hash]["distortion_params"]
+        fisheye_fov = intrinsics_unique[intrinsics_hash]["fisheye_fov"]
 
         # Load image
         image_path = image_data_paths[name]["image_path"]
@@ -238,7 +239,8 @@ def readBlenderFisheyeCameras(path):
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=name, width=width, 
                               height=height, lens_mask=lens_mask,
-                              distortion_params=distortion_params)
+                              distortion_params=distortion_params,
+                              fisheye_fov=fisheye_fov)
         cam_infos.append(cam_info)
     
     return cam_infos
@@ -279,9 +281,9 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readBlenderFisheyeInfo(path, images, eval, llffhold=8):
+def readBlenderFisheyeInfo(path, images, eval, llffhold=8, fisheye_poly_degree=8):
     # Create cam_infos
-    cam_infos = readBlenderFisheyeCameras(path)
+    cam_infos = readBlenderFisheyeCameras(path, fisheye_poly_degree=fisheye_poly_degree)
 
     # Split into train and test
     if eval:
@@ -428,11 +430,11 @@ def scannet_cameras_dict(colmap_dir):
     return dataDict                            
 
 
-def readScannetCameras(path):
+def readScannetCameras(path, fisheye_poly_degree=8):
     # Read poses and intrinsics
     images_dict = scannet_images_dict(path)
     cameras_dict = scannet_cameras_dict(path)
-    cameras_dict = approx_distortion_poly(cameras_dict)
+    cameras_dict = approx_distortion_poly(cameras_dict, fisheye_poly_degree=fisheye_poly_degree)
 
     print("Approximation errors for polynomial distortion:")
     for camera_id, camera in cameras_dict.items():
@@ -460,16 +462,16 @@ def readScannetCameras(path):
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=image_width, height=image_height,
-                              lens_mask=None, distortion_params=distortion_params, FovMax=max_fov)
+                              lens_mask=None, distortion_params=distortion_params, fisheye_fov=max_fov)
         
         cam_infos.append(cam_info)
         
     return cam_infos
 
 
-def readScannetppInfo(path, images, eval, llffhold=8):
+def readScannetppInfo(path, images, eval, llffhold=8, fisheye_poly_degree=8):
     # Read cam_infos
-    cam_infos = readScannetCameras(path) 
+    cam_infos = readScannetCameras(path, fisheye_poly_degree=fisheye_poly_degree) 
 
     # Read train/test split
     with open(os.path.join(path, "dslr", "train_test_lists.json")) as f:

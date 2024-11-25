@@ -317,105 +317,8 @@ def merge_pc(*pointclouds):
     return tuple(concatted)
 
 
-# def render_old(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
-#            scaling_modifier = 1.0, override_color = None, render_coords = False):
-#     """
-#     Render the scene. 
-    
-#     Background tensor (bg_color) must be on GPU!
-#     """
-
-#     # Read config
-#     config = configparser.ConfigParser()
-#     config.read("control.ini")
- 
-#     # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
-#     if not render_coords:
-#         means3D = pc.get_xyz
-#         screenspace_points = torch.zeros_like(means3D, dtype=means3D.dtype, requires_grad=True, device="cuda") + 0
-#         try:
-#             screenspace_points.retain_grad()
-#         except:
-#             pass
-#         means2D = screenspace_points
-#         opacity = pc.get_opacity
-#         scales = pc.get_scaling
-#         rotations = pc.get_rotation
-#         shs = pc.get_features
-#     else:
-#         means3D, opacity, scales, rotations, shs = np_to_torch(get_axis_pc_np(axis=0, resolution=111, size=11))
-#         screenspace_points = torch.zeros_like(means3D, dtype=means3D.dtype, requires_grad=True, device="cuda") + 0
-#         try:
-#             screenspace_points.retain_grad()
-#         except:
-#             pass
-#         means2D = screenspace_points
-
-#     # Set up rasterization configuration
-#     tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
-#     tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
-
-#     K = getProjectionMatrix(
-#         znear=float(config["render-distance"]["znear"]), 
-#         zfar=float(config["render-distance"]["zfar"]), 
-#         fovX=viewpoint_camera.FoVx, fovY=viewpoint_camera.FoVy).transpose(0,1).cuda()
-
-#     raster_settings = GaussianRasterizationSettings(
-#         image_height=int(viewpoint_camera.image_height),
-#         image_width=int(viewpoint_camera.image_width),
-#         tanfovx=tanfovx,
-#         tanfovy=tanfovy,
-#         bg=bg_color,
-#         scale_modifier=scaling_modifier,
-#         viewmatrix=viewpoint_camera.world_view_transform, # torch.eye(4).cuda(),
-#         projmatrix=viewpoint_camera.full_proj_transform,
-#         sh_degree=pc.active_sh_degree,
-#         campos=viewpoint_camera.camera_center,
-#         prefiltered=False,
-#         debug=pipe.debug
-#     )
-
-#     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
-
-#     # Apply camera pose
-#     if config["extrinsics"]["override"] == "true":
-#         camera_extrinsics = load_extrinsics_from_config(config)
-#     else:
-#         camera_extrinsics = viewpoint_camera.world_view_transform.float().cuda()
-
-
-#     R = camera_extrinsics[:3, :3].T
-#     # R = torch.eye(3).cuda()
-#     t = camera_extrinsics[3, :3]
-
-#     # R = camera_control[:3, :3]
-#     world_view_quat = rotation_matrix_to_quaternion(R)
-
-#     # means3D = (means3D @ R) + t
-#     # rotations = quaternion_multiply(rotations, world_view_quat, left_multiply=False)
-
-
-#     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
-#     rendered_image, radii, _ = rasterizer(
-#         means3D = means3D,
-#         means2D = means2D,
-#         shs = shs,
-#         colors_precomp = None,
-#         opacities = opacity,
-#         scales = scales,
-#         rotations = rotations,
-#         cov3D_precomp = None)
-
-#     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
-#     # They will be excluded from value updates used in the splitting criteria.
-#     return {"render": rendered_image,
-#             "viewspace_points": screenspace_points,
-#             "visibility_filter" : radii > 0,
-#             "radii": radii}
-
 def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
-           scaling_modifier = 1.0, override_color = None, render_coords = False,
-           fisheye=False, is_test=False):
+           scaling_modifier = 1.0, render_coords = False):
     """
     Render the scene. 
     
@@ -431,10 +334,8 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
 
 
     # White background for coordinate rendering
-    if config["mods"]["show_coords"] == "true":
+    if render_coords:
         bg_color = torch.ones(3).float().cuda()
-
-    scaling_modifier = float(config["mods"]["scale_modifier"])
  
     # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
     if not render_coords:
@@ -508,93 +409,67 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
     rotations = quaternion_multiply(rotations, world_view_quat, left_multiply=False)
 
     # Geometric distortion based on fisheye lens
-    if fisheye:
-        poly_coeffs = viewpoint_camera.distortion_params
-        # for i in range(24):
-        #     try:
-        #         poly_coeffs.append(float(config["mods"][f"theta_mod_{i}"]))
-        #     except:
-        #         pass
-        
-        if config["mods"]["jacobi"] == "true":
-            # Compute jacobians
-            jacobians = jacobian_all(means3D, poly_coeffs)
 
-            # Check for NaN and inf values
-            assert not torch.any(torch.isnan(jacobians)), "NaN values in jacobians"
-            assert not torch.any(torch.isinf(jacobians)), "Inf values in jacobians"
+    poly_coeffs = viewpoint_camera.distortion_params
+    
+    if not pipe.jacobians_off:
+        # Compute jacobians
+        jacobians = jacobian_all(means3D, poly_coeffs)
 
-        # Convert to spherical coordinates
-        radius = torch.norm(means3D, dim=1)
-        theta = torch.arccos(means3D[:, 2] / radius)
-        phi = torch.atan2(means3D[:, 1], means3D[:, 0])
+        # Check for NaN and inf values
+        assert not torch.any(torch.isnan(jacobians)), "NaN values in jacobians"
+        assert not torch.any(torch.isinf(jacobians)), "Inf values in jacobians"
 
-        # Remove points outside the field of view
-        fov_fisheye = np.deg2rad(float(config["fisheye"]["fov"]))
+    # Convert to spherical coordinates
+    radius = torch.norm(means3D, dim=1)
+    theta = torch.arccos(means3D[:, 2] / radius)
+    phi = torch.atan2(means3D[:, 1], means3D[:, 0])
 
-        # Remove points outside the field of view
+    # Remove points outside the field of view
+    fov_fisheye = viewpoint_camera.fisheye_fov
+
+    if fov_fisheye:
         removal_mask = (theta < fov_fisheye / 2)
-
         opacity = opacity * removal_mask[:, None].float()
 
-        # Apply distortion 
-        # theta_mod = poly_coeffs[0] * theta ** 0
-        # theta_mod += poly_coeffs[1] * theta ** 1
-        # theta_mod += poly_coeffs[2] * theta ** 2
-        # theta_mod += poly_coeffs[3] * theta ** 3
-        # theta_mod += poly_coeffs[4] * theta ** 4
+    # Apply distortion 
+    theta_mod = torch.zeros_like(theta, device=theta.device)
+    for i, coeff in enumerate(poly_coeffs):
+        theta_mod += coeff * theta ** i
 
-        theta_mod = torch.zeros_like(theta, device=theta.device)
-        for i, coeff in enumerate(poly_coeffs):
-            theta_mod += coeff * theta ** i
-        # theta_mod = theta
+    # Convert back to cartesian coordinates
+    x_res = torch.sin(theta_mod) * torch.cos(phi) * radius
+    y_res = torch.sin(theta_mod) * torch.sin(phi) * radius
+    z_res = torch.cos(theta_mod) * radius
+    means3D = torch.stack([x_res, y_res, z_res], dim=1)
 
-        # Convert back to cartesian coordinates
-        x_res = torch.sin(theta_mod) * torch.cos(phi) * radius
-        y_res = torch.sin(theta_mod) * torch.sin(phi) * radius
-        z_res = torch.cos(theta_mod) * radius
-        means3D = torch.stack([x_res, y_res, z_res], dim=1)
+    if not pipe.jacobians_off:
+        # Compute initial axes
+        rotations_mat = quaternion_to_rotation_matrix(rotations)
+        axes = torch.diag_embed(scales)
+        axes = rotations_mat @ axes
 
-        if config["mods"]["jacobi"] == "true":
-            # Compute initial axes
-            rotations_mat = quaternion_to_rotation_matrix(rotations)
-            axes = torch.diag_embed(scales)
-            axes = rotations_mat @ axes
+        # Distort axes using jacobians
+        axes_distorted = jacobians @ axes
 
-            # Distort axes using jacobians
-            axes_distorted = jacobians @ axes
+        # Orthogonalize via Gram-Schmidt
+        axes_ortho = gram_schmidt_ordered(axes_distorted)
 
-            # Orthogonalize via Gram-Schmidt
-            axes_ortho = gram_schmidt_ordered(axes_distorted)
+        # Seperate into scale and rotation
+        scales_distorted = torch.norm(axes_ortho, dim=1)
+        scales_mat_inv = torch.diag_embed(1. / scales_distorted)
+        rotmat = axes_ortho @ (scales_mat_inv)
 
-            # Seperate into scale and rotation
-            scales_distorted = torch.norm(axes_ortho, dim=1)
-            scales_mat_inv = torch.diag_embed(1. / scales_distorted)
-            rotmat = axes_ortho @ (scales_mat_inv)
+        # Convert back to quaternion
+        rot_quat = rotation_matrix_to_quaternion_batched(rotmat)
 
-            # Convert back to quaternion
-            rot_quat = rotation_matrix_to_quaternion_batched(rotmat)
-
-            # Update scales and rotations
-            scales = scales_distorted
-            rotations = rot_quat
+        # Update scales and rotations
+        scales = scales_distorted
+        rotations = rot_quat
 
     
     # Precompute covariance matrices
     cov3D = build_convariance_matrix(rotations, scales, scaling_modifier=scaling_modifier)
-
-
-    # # Rasterize visible Gaussians to image, obtain their radii (on screen).
-    # kwargs = {
-    #     "means3D": means3D,
-    #     "means2D": means2D,
-    #     "shs": shs,
-    #     "colors_precomp": None,
-    #     "opacities": opacity,
-    #     "scales": scales,
-    #     "rotations": rotations,
-    #     "cov3D_precomp": None
-    # }
 
     kwargs = {
         "means3D": means3D,
@@ -620,7 +495,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
     return {"render": rendered_image,
-            "viewspace_points": screenspace_points, # Gradients in here somehow, not in scale/rotation
+            "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
             "radii": radii,
             "depth": depth}

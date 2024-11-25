@@ -59,7 +59,7 @@ def loadCam(args, id, cam_info, resolution_scale):
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
                   image=gt_image, gt_alpha_mask=loaded_mask,
                   image_name=cam_info.image_name, uid=id, data_device=args.data_device,
-                  lens_mask=lens_mask, distortion_params=distortion_params, FoVmax=cam_info.FovMax)
+                  lens_mask=lens_mask, distortion_params=distortion_params, fisheye_fov=cam_info.fisheye_fov)
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []

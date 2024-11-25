@@ -47,10 +47,10 @@ class Scene:
             scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
         elif os.path.exists(os.path.join(args.source_path, "blender-fisheye")):
             print("Found blender-fisheye folder, assuming Blender fisheye data set!")
-            scene_info = sceneLoadTypeCallbacks["BlenderFisheye"](args.source_path, args.white_background, args.eval)
+            scene_info = sceneLoadTypeCallbacks["BlenderFisheye"](args.source_path, args.white_background, args.eval, fisheye_poly_degree=args.fisheye_poly_degree)
         elif os.path.exists(os.path.join(args.source_path, "dslr", "scannetpp")):
             print("Found scannetpp folder, assuming ScanNet++ data set!")
-            scene_info = sceneLoadTypeCallbacks["ScanNetPP"](args.source_path, args.white_background, args.eval)
+            scene_info = sceneLoadTypeCallbacks["ScanNetPP"](args.source_path, args.white_background, args.eval, fisheye_poly_degree=args.fisheye_poly_degree)
         else:
             assert False, "Could not recognize scene type!"
 
@@ -86,7 +86,7 @@ class Scene:
                                                            "iteration_" + str(self.loaded_iter),
                                                            "point_cloud.ply"))
         else:
-            self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent)
+            self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent, add_skybox=args.skybox)
 
     def save(self, iteration):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))

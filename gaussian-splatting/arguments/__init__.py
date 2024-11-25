@@ -47,6 +47,8 @@ class ParamGroup:
 class ModelParams(ParamGroup): 
     def __init__(self, parser, sentinel=False):
         self.sh_degree = 3
+        self.skybox = False
+        self.fisheye_poly_degree = 8
         self._source_path = ""
         self._model_path = ""
         self._images = "images"
@@ -66,6 +68,7 @@ class PipelineParams(ParamGroup):
         self.convert_SHs_python = False
         self.compute_cov3D_python = False
         self.debug = False
+        self.jacobians_off = False
         super().__init__(parser, "Pipeline Parameters")
 
 class OptimizationParams(ParamGroup):
