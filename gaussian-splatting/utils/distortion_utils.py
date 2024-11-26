@@ -104,6 +104,7 @@ def approx_distortion_poly(cameras_dict, fisheye_poly_degree=8):
         cameras_dict_out[camera_id] = intrinsics.copy()
         cameras_dict_out[camera_id]["distortion_params"] = coeffs
         cameras_dict_out[camera_id]["mse"] = mse
-        cameras_dict_out[camera_id]["max_fov_monotonic"] = max_theta_pre
+        cameras_dict_out[camera_id]["max_fov_monotonic"] = max_theta_pre * 2
+        cameras_dict_out[camera_id]["max_fov_monotonic_deg"] = np.rad2deg(max_theta_pre) * 2
 
     return cameras_dict_out

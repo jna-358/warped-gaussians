@@ -438,7 +438,9 @@ def readScannetCameras(path, fisheye_poly_degree=8):
 
     print("Approximation errors for polynomial distortion:")
     for camera_id, camera in cameras_dict.items():
-        print(f" - Camera {camera_id} : mse = {camera['mse']:.1e}")
+        print(f" - Camera {camera_id}")
+        for prop in ["mse", "max_fov_monotonic_deg"]:
+            print(f"   - {prop}: {camera[prop]}")
 
     cam_infos = []
     for image_id, image_data in images_dict.items():
@@ -499,8 +501,6 @@ def readScannetppInfo(path, images, eval, llffhold=8, fisheye_poly_degree=8):
     return scene_info
 
 
-
-    raise NotImplementedError("ScanNet++ data set not implemented yet!")
 
 def readColmapSceneInfo(path, images, eval, llffhold=8):
     try:
