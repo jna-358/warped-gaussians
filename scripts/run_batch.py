@@ -43,7 +43,7 @@ tasks_degree = [
 ]
 
 
-tasks_all = tasks_scannet + tasks_jacobian + tasks_degree
+tasks_all = tasks_blender + tasks_scannet + tasks_jacobian + tasks_skybox + tasks_degree
 
 
 # # Add dryrun argument
