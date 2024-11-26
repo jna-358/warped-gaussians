@@ -40,6 +40,10 @@ class Scene:
         self.train_cameras = {}
         self.test_cameras = {}
 
+
+        assert os.path.exists(args.source_path), f"Could not find source path {args.source_path}"
+
+
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
@@ -52,7 +56,7 @@ class Scene:
             print("Found scannetpp folder, assuming ScanNet++ data set!")
             scene_info = sceneLoadTypeCallbacks["ScanNetPP"](args.source_path, args.white_background, args.eval, fisheye_poly_degree=args.fisheye_poly_degree)
         else:
-            assert False, "Could not recognize scene type!"
+            assert False, f"Could not recognize scene type for {args.source_path}"
 
         if not self.loaded_iter:
             with open(scene_info.ply_path, 'rb') as src_file, open(os.path.join(self.model_path, "input.ply") , 'wb') as dest_file:
