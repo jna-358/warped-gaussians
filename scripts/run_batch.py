@@ -7,7 +7,7 @@ import random
 gpus = ["0", "1", "2"]
 
 tasks_blender = [
-    f"python train.py --expname blender -r 1 --eval --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/{scene}" for scene in [
+    f"python train.py --expname blender --eval --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/{scene}" for scene in [
         "archiviz",
         "barbershop",
         "classroom",
@@ -18,7 +18,7 @@ tasks_blender = [
 ]
 
 tasks_scannet = [
-    f"python train.py --expname scannet -r 1 --eval --fisheye_poly_degree 8 -s /data/scannet/{scene}" for scene in [
+    f"python train.py --expname scannet --eval --fisheye_poly_degree 8 -s /data/scannet/{scene}" for scene in [
         "bedroom",
         "kitchen",
         "office_day",
@@ -29,24 +29,21 @@ tasks_scannet = [
 ]
 
 tasks_jacobian = [
-    "python train.py --expname jacobian -r 1 --eval --fisheye_poly_degree 8 --jacobians_off -s /data/scannet/utility_room",
-    "python train.py -r 1 --eval --fisheye_poly_degree 8 -s /data/scannet/utility_room",
+    "python train.py --expname jacobian --eval --fisheye_poly_degree 8 --jacobians_off -s /data/scannet/utility_room",
+    "python train.py --exmname jacobian --eval --fisheye_poly_degree 8 -s /data/scannet/utility_room",
 ]
 
 tasks_skybox = [
-    "python train.py --expname skybox -r 1 --eval --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk",
-    "python train.py -r 1 --eval --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk"
+    "python train.py --expname skybox --eval --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk",
+    "python train.py --expname skybox --eval --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk"
 ]
 
 tasks_degree = [
-    f"python train.py --expname poydegree -r 1 --eval --fisheye_poly_degree {i} -s /data/scannet/utility_room" for i in range(1, 11)
+    f"python train.py --expname poydegree --eval --fisheye_poly_degree {i} -s /data/scannet/utility_room" for i in [2, 4, 6, 8, 10]
 ]
 
-tasks_test = [
-    "python train.py --expname test -r 1 --eval --fisheye_poly_degree 8 -s /data/scannet/utility_room"
-]
 
-tasks_all = tasks_blender + tasks_scannet + tasks_jacobian + tasks_skybox + tasks_degree
+tasks_all = tasks_scannet + tasks_jacobian + tasks_degree
 
 
 # # Add dryrun argument

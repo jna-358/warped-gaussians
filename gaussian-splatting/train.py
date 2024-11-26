@@ -244,7 +244,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     images.append(depth_image)
                 image_test_all = concat_images(images)
 
-                upload_image(image_test_all, os.path.basename(dataset.source_path))
+                upload_image(image_test_all, os.path.basename(dataset.source_path) + f"_{dataset.expname}")
                 torch.cuda.empty_cache()
 
             if iteration == opt.iterations:

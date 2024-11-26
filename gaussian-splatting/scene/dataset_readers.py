@@ -473,14 +473,23 @@ def readScannetCameras(path, fisheye_poly_degree=8):
 
 def readScannetppInfo(path, images, eval, llffhold=8, fisheye_poly_degree=8):
     # Read cam_infos
-    cam_infos = readScannetCameras(path, fisheye_poly_degree=fisheye_poly_degree) 
+    cam_infos_unsorted = readScannetCameras(path, fisheye_poly_degree=fisheye_poly_degree) 
+    cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x: x.image_name)
 
-    # Read train/test split
-    with open(os.path.join(path, "dslr", "train_test_lists.json")) as f:
-        train_test_lists = json.load(f)
+    # # Read train/test split (NOT USED BY FISHEYE-GS)
+    # with open(os.path.join(path, "dslr", "train_test_lists.json")) as f:
+    #     train_test_lists = json.load(f)
+
+    # if eval:
+    #     train_cam_infos = [c for idx, c in enumerate(cam_infos) if c.image_name in train_test_lists["train"]]
+    #     test_cam_infos = [c for idx, c in enumerate(cam_infos) if c.image_name in train_test_lists["test"]]
+    # else:
+    #     train_cam_infos = cam_infos
+    #     test_cam_infos = []
+
     if eval:
-        train_cam_infos = [c for idx, c in enumerate(cam_infos) if c.image_name in train_test_lists["train"]]
-        test_cam_infos = [c for idx, c in enumerate(cam_infos) if c.image_name in train_test_lists["test"]]
+        train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
+        test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
     else:
         train_cam_infos = cam_infos
         test_cam_infos = []
