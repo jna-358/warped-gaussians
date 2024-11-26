@@ -136,41 +136,27 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration % 1000 == 0:
                 gaussians.oneupSHdegree()
 
-            # Iterate over batch (same batch size as in Fisheye GS)
-            batch_size = 3
-            L1_all = 0.0
-            ssim_all = 0.0
-            for _ in range(batch_size):
-                # Pick a random Camera
-                if not viewpoint_stack:
-                    viewpoint_stack = scene.getTrainCameras().copy()
-                viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
+            # Pick a random Camera
+            if not viewpoint_stack:
+                viewpoint_stack = scene.getTrainCameras().copy()
+            viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
 
-                # Render
-                if (iteration - 1) == debug_from:
-                    pipe.debug = True
+            # Render
+            if (iteration - 1) == debug_from:
+                pipe.debug = True
 
-                bg = torch.rand((3), device="cuda") if opt.random_background else background
+            bg = torch.rand((3), device="cuda") if opt.random_background else background
 
-                render_pkg = render(viewpoint_cam, 
-                                    gaussians, pipe, bg, 
-                                    render_coords=False)
-                image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+            render_pkg = render(viewpoint_cam, 
+                                gaussians, pipe, bg, 
+                                render_coords=False)
+            image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
-                # Loss
-                gt_image = viewpoint_cam.original_image.cuda()
-                L1_current = l1_loss(image, gt_image)
-                ssim_current = ssim(image, gt_image)
-
-                L1_all += L1_current
-                ssim_all += ssim_current
-            
-            # Loss for the full batch
-            L1_all /= batch_size
-            ssim_all /= batch_size
-
-            loss = (1.0 - opt.lambda_dssim) * L1_all \
-                + opt.lambda_dssim * (1.0 - ssim_all)
+            # Loss
+            gt_image = viewpoint_cam.original_image.cuda()
+            Ll1 = l1_loss(image, gt_image)
+            loss = (1.0 - opt.lambda_dssim) * Ll1 \
+                + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
             
             # Backprop
             loss.backward()
@@ -189,7 +175,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             # # Log and save
             if config["stop-training"]["skip-training"] != "true":
-                training_report(tb_writer, iteration, L1_all, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, dataset, scene, render, (pipe, background), {})
+                training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, dataset, scene, render, (pipe, background), {})
 
             # Densification
             if config["stop-training"]["skip-training"] != "true":
