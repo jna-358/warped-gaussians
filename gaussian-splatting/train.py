@@ -29,6 +29,8 @@ import numpy as np
 import cv2
 import configparser
 from utils.general_utils import build_rotation, rotation_matrix_to_quaternion_batched
+import time
+import json
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -344,11 +346,33 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                     l1_test += l1_loss(rgb, gt_image).mean().double()
                     psnr_test += psnr(rgb, gt_image).mean().double()
                 psnr_test /= len(config['cameras'])
-                l1_test /= len(config['cameras'])          
+                l1_test /= len(config['cameras']) 
+
                 print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))
                 if tb_writer:
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - l1_loss', l1_test, iteration)
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
+
+        # Find latency
+        if dataset.latency and iteration == testing_iterations[-1]:
+            N_latency = 100
+            times = np.empty(N_latency)
+            for i in tqdm(range(N_latency), desc="Latency evaluation"):
+                # Pick a random camera
+                viewpoint = scene.getTrainCameras().copy()[randint(0, len(scene.getTrainCameras())-1)]
+                start = time.perf_counter()
+                renderFunc(viewpoint, scene.gaussians, *renderArgs, **renderKWArgs)
+                end = time.perf_counter()
+                times[i] = end - start
+            latency_dict = {
+                "mean": np.mean(times),
+                "std": np.std(times),
+                "min": np.min(times),
+                "max": np.max(times)
+            }
+
+            with open(os.path.join(dataset.model_path, "latency.json"), "w") as f:
+                json.dump(latency_dict, f, indent=4)
 
         if tb_writer:
             tb_writer.add_histogram("scene/opacity_histogram", scene.gaussians.get_opacity, iteration)

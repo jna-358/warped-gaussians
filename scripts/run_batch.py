@@ -30,7 +30,7 @@ tasks_scannet = [
 
 tasks_jacobian = [
     "python train.py --expname jacobian --eval --fisheye_poly_degree 8 --jacobians_off -s /data/scannet/utility_room",
-    "python train.py --exmname jacobian --eval --fisheye_poly_degree 8 -s /data/scannet/utility_room",
+    "python train.py --expname jacobian --eval --fisheye_poly_degree 8 -s /data/scannet/utility_room",
 ]
 
 tasks_skybox = [
@@ -43,7 +43,7 @@ tasks_degree = [
 ]
 
 
-tasks_all = tasks_scannet + tasks_jacobian + tasks_degree
+tasks_all = tasks_jacobian
 
 
 # # Add dryrun argument
