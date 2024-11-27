@@ -7,7 +7,7 @@ import random
 gpus = ["0", "1", "2"]
 
 tasks_blender = [
-    f"python train.py --expname blender --eval --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/{scene}" for scene in [
+    f"python train.py --expname blender --eval -r 1 --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/{scene}" for scene in [
         "archiviz",
         "barbershop",
         "classroom",
@@ -18,7 +18,7 @@ tasks_blender = [
 ]
 
 tasks_scannet = [
-    f"python train.py --expname scannet --eval --fisheye_poly_degree 8 -s /data/scannet/{scene}" for scene in [
+    f"python train.py --expname scannet --eval -r 1 --fisheye_poly_degree 8 -s /data/scannet/{scene}" for scene in [
         "bedroom",
         "kitchen",
         "office_day",
@@ -29,25 +29,22 @@ tasks_scannet = [
 ]
 
 tasks_jacobian = [
-    "python train.py --expname jacobian --eval --fisheye_poly_degree 8 --jacobians_off -s /data/scannet/utility_room",
-    "python train.py --expname jacobian --eval --fisheye_poly_degree 8 -s /data/scannet/utility_room",
+    "python train.py --expname jacobian --eval -r 1 --fisheye_poly_degree 8 --jacobians_off -s /data/scannet/utility_room",
+    "python train.py --expname jacobian --eval -r 1 --fisheye_poly_degree 8 -s /data/scannet/utility_room",
 ]
 
 tasks_skybox = [
-    "python train.py --expname skybox --eval --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk",
-    "python train.py --expname skybox --eval --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk"
+    "python train.py --expname skybox --eval -r 1 --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk",
+    "python train.py --expname skybox --eval -r 1 --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk"
 ]
 
 tasks_degree = [
-    f"python train.py --expname poydegree --eval --fisheye_poly_degree {i} -s /data/scannet/utility_room" for i in [2, 4, 6, 8, 10]
+    f"python train.py --expname poydegree --eval -r 1 --fisheye_poly_degree {i} -s /data/scannet/utility_room" for i in [2, 4, 6, 8, 10]
 ]
 
 
-tasks_all = tasks_jacobian
+tasks_all = tasks_scannet + tasks_jacobian + tasks_degree
 
-
-# # Add dryrun argument
-# tasks_all = [" ".join(task.split()[:-2]) + " --dryrun " + " ".join(task.split()[-2:]) for task in tasks_all]
 
 
 # Define a function to process a single string
