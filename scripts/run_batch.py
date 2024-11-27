@@ -7,7 +7,7 @@ import random
 gpus = ["0", "1", "2"]
 
 tasks_blender = [
-    f"python train.py --expname blender --eval -r 1 --latency --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/{scene}" for scene in [
+    f"python train.py --expname blender_{scene} --eval -r 1 --latency --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/{scene} && python metrics.py -m ./output/blender_{scene}" for scene in [
         "archiviz",
         "barbershop",
         "classroom",
@@ -18,7 +18,7 @@ tasks_blender = [
 ]
 
 tasks_scannet = [
-    f"python train.py --expname scannet --eval -r 1 --latency --fisheye_poly_degree 8 -s /data/scannet/{scene}" for scene in [
+    f"python train.py --expname scannet_{scene} --eval -r 1 --latency --fisheye_poly_degree 8 -s /data/scannet/{scene} && python metrics.py -m ./output/scannet_{scene}" for scene in [
         "bedroom",
         "kitchen",
         "office_day",
@@ -29,17 +29,17 @@ tasks_scannet = [
 ]
 
 tasks_jacobian = [
-    "python train.py --expname jacobian --eval -r 1 --latency --fisheye_poly_degree 8 --jacobians_off -s /data/scannet/utility_room",
-    "python train.py --expname jacobian --eval -r 1 --latency --fisheye_poly_degree 8 -s /data/scannet/utility_room",
+    "python train.py --expname jacobian_off --eval -r 1 --latency --fisheye_poly_degree 8 --jacobians_off -s /data/scannet/utility_room && python metrics.py -m ./output/jacobian_off",
+    "python train.py --expname jacobian_on --eval -r 1 --latency --fisheye_poly_degree 8 -s /data/scannet/utility_room && python metrics.py -m ./output/jacobian_on",
 ]
 
 tasks_skybox = [
-    "python train.py --expname skybox --eval -r 1 --latency --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk",
-    "python train.py --expname skybox --eval -r 1 --latency --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk"
+    "python train.py --expname skybox_on --eval -r 1 --latency --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk && python metrics.py -m ./output/skybox_on",
+    "python train.py --expname skybox_off --eval -r 1 --latency --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk && python metrics.py -m ./output/skybox_off",
 ]
 
 tasks_degree = [
-    f"python train.py --expname poydegree --eval -r 1 --latency --fisheye_poly_degree {i} -s /data/scannet/utility_room" for i in [2, 4, 6, 8, 10]
+    f"python train.py --expname poydegree_{i} --eval -r 1 --latency --fisheye_poly_degree {i} -s /data/scannet/utility_room && python metrics.py -m ./output/polydegree_{i}" for i in [2, 4, 6, 8, 10]
 ]
 
 
@@ -62,7 +62,7 @@ def process(input_cmd):
             "--net=host "
             "--shm-size=32gb "
             "nazarenus/gaussians-fisheye:0.2 "
-            f"{input_cmd}")
+            f'bash -c "{input_cmd}"')
 
     print(cmd)
     os.system(cmd)
@@ -75,4 +75,3 @@ if __name__ == "__main__":
     # Create a pool with one process per GPU
     with mp.Pool(len(gpus)) as pool:
         pool.starmap(process, [(input_cmd,) for input_cmd in tasks_all])
-

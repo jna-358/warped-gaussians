@@ -273,7 +273,10 @@ def prepare_output_and_logger(model, opt, pipe):
             unique_str=os.getenv('OAR_JOB_ID')
         else:
             unique_str = str(uuid.uuid4())
-        model.model_path = os.path.join("./output/", f"{model.expname}_{os.path.basename(model.source_path)}_{unique_str[0:10]}")
+        if model.expname != "":
+            model.model_path = os.path.join("./output/", model.expname)
+        else:
+            model.model_path = f"{os.path.basename(model.source_path)}_{unique_str[0:10]}"
         
     # Set up output folder
     print("Output folder: {}".format(model.model_path))
@@ -378,6 +381,8 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
             tb_writer.add_histogram("scene/opacity_histogram", scene.gaussians.get_opacity, iteration)
             tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
+
+
 
 if __name__ == "__main__":
     # Set up command line argument parser

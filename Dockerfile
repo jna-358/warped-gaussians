@@ -69,5 +69,9 @@ RUN pip install debugpy
 RUN pip install transformers
 
 RUN pip install tensorboard
+RUN pip install pandas
+
+RUN echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | debconf-set-selections
+RUN apt-get update && apt-get install -y --no-install-recommends fontconfig ttf-mscorefonts-installer && rm -rf /var/lib/apt/lists/*
 
 ENV PROMPT_COMMAND='history -a'

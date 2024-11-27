@@ -47,12 +47,14 @@ def evaluate(model_paths):
             print("Scene:", scene_dir)
             full_dict = {}
             iter_dirs = [os.path.basename(iter_dir) for iter_dir in glob.glob(os.path.join(scene_dir, "render", "iter_*"))]
+            iter_dirs = sorted(iter_dirs, key=lambda x: int(x.split("_")[-1]))
 
-            for iter_dir in iter_dirs:
+            for iter_dir in [iter_dirs[-1]]:
                 subset_dirs = [os.path.basename(subset_dir) for subset_dir in glob.glob(os.path.join(scene_dir, "render", iter_dir, "*"))]
 
                 full_dict[iter_dir] = {}
 
+                subset_dirs = ["test"]
                 for subset in subset_dirs:
                     full_dict[iter_dir][subset] = {}
                     test_dir = os.path.join(scene_dir, "render", iter_dir, subset)
