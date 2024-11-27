@@ -7,7 +7,7 @@ import random
 gpus = ["0", "1", "2"]
 
 tasks_blender = [
-    f"python train.py --expname blender --eval -r 1 --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/{scene}" for scene in [
+    f"python train.py --expname blender --eval -r 1 --latency --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/{scene}" for scene in [
         "archiviz",
         "barbershop",
         "classroom",
@@ -18,7 +18,7 @@ tasks_blender = [
 ]
 
 tasks_scannet = [
-    f"python train.py --expname scannet --eval -r 1 --fisheye_poly_degree 8 -s /data/scannet/{scene}" for scene in [
+    f"python train.py --expname scannet --eval -r 1 --latency --fisheye_poly_degree 8 -s /data/scannet/{scene}" for scene in [
         "bedroom",
         "kitchen",
         "office_day",
@@ -29,17 +29,17 @@ tasks_scannet = [
 ]
 
 tasks_jacobian = [
-    "python train.py --expname jacobian --eval -r 1 --fisheye_poly_degree 8 --jacobians_off -s /data/scannet/utility_room",
-    "python train.py --expname jacobian --eval -r 1 --fisheye_poly_degree 8 -s /data/scannet/utility_room",
+    "python train.py --expname jacobian --eval -r 1 --latency --fisheye_poly_degree 8 --jacobians_off -s /data/scannet/utility_room",
+    "python train.py --expname jacobian --eval -r 1 --latency --fisheye_poly_degree 8 -s /data/scannet/utility_room",
 ]
 
 tasks_skybox = [
-    "python train.py --expname skybox --eval -r 1 --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk",
-    "python train.py --expname skybox --eval -r 1 --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk"
+    "python train.py --expname skybox --eval -r 1 --latency --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk",
+    "python train.py --expname skybox --eval -r 1 --latency --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/monk"
 ]
 
 tasks_degree = [
-    f"python train.py --expname poydegree --eval -r 1 --fisheye_poly_degree {i} -s /data/scannet/utility_room" for i in [2, 4, 6, 8, 10]
+    f"python train.py --expname poydegree --eval -r 1 --latency --fisheye_poly_degree {i} -s /data/scannet/utility_room" for i in [2, 4, 6, 8, 10]
 ]
 
 
