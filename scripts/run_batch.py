@@ -46,7 +46,6 @@ tasks_degree = [
 tasks_all = tasks_scannet + tasks_jacobian + tasks_degree
 
 
-
 # Define a function to process a single string
 def process(input_cmd):
     id = int(mp.current_process().name.split("-")[-1])-1

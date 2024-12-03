@@ -35,6 +35,9 @@ if __name__ == "__main__":
     parser.add_argument("input_dir", type=str)
     args = parser.parse_args()
 
+    # Remove trailing slash
+    args.input_dir = args.input_dir.rstrip("/")
+
     # Get all subdirectories
     subdirs = [os.path.basename(sub) for sub in glob.glob(os.path.join(args.input_dir, "*"))]
     
@@ -66,7 +69,7 @@ if __name__ == "__main__":
     df_scannet = pd.DataFrame(columns=["scene", "method", "gaussians", "psnr", "ssim", "lpips"])
     for idx, sub in enumerate(tqdm.tqdm(subdirs_scannet, desc="Scannet experiments")):
         scene_parts = sub.split("_")
-        scene = "_".join(scene_parts[1:-1])
+        scene = "_".join(scene_parts[1:]) # Remove "scannet" prefix
 
         # Parse our results.json
         results_json = os.path.join(args.input_dir, sub, "results.json")
@@ -107,7 +110,7 @@ if __name__ == "__main__":
         # Parse tensorboard data
         tensorboard_data = get_tensorboard_data(os.path.join(args.input_dir, sub), keys=["total_points"])
 
-        scene = sub.split("_")[1]
+        scene = "utility_room"
 
         # Create a new row with index idx
         df_jacobian.loc[idx] = [scene, not pipe_data.jacobians_off, tensorboard_data["total_points"], tensorboard_data["time"], results["PSNR"], results["SSIM"], results["LPIPS"]]
@@ -129,7 +132,7 @@ if __name__ == "__main__":
         # Parse tensorboard data
         tensorboard_data = get_tensorboard_data(os.path.join(args.input_dir, sub), keys=["total_points"])
 
-        scene = sub.split("_")[1]
+        scene = "monk"
 
         # Create a new row with index idx
         df_skybox.loc[idx] = [scene, pipe_data.skybox, tensorboard_data["total_points"], tensorboard_data["time"], results["PSNR"], results["SSIM"], results["LPIPS"]]
@@ -139,7 +142,7 @@ if __name__ == "__main__":
     df_polydegree = pd.DataFrame(columns=["scene", "polydegree", "gaussians", "time", "psnr", "ssim", "lpips"])
     
     for idx, sub in enumerate(tqdm.tqdm(subdirs_polydegree, "Polydegree experiments")):
-        scene = "_".join(sub.split("_")[1:-1])
+        scene = "utility_room"
 
         # Parse results.json
         results_json = os.path.join(args.input_dir, sub, "results.json")
@@ -160,6 +163,19 @@ if __name__ == "__main__":
     # Order by polydegree
     df_polydegree = df_polydegree.sort_values(by="polydegree")
 
+    # Latency experiments
+    subdirs_scannet = sorted([sub for sub in subdirs if sub.startswith("scannet")])
+    df_latency = pd.DataFrame(columns=["scene", "mean", "std"])
+
+    for idx, sub in enumerate(tqdm.tqdm(subdirs_scannet, desc="Latency experiments")):
+        scene_parts = sub.split("_")
+        scene = "_".join(scene_parts[1:])
+        latency_json = os.path.join(args.input_dir, sub, "latency.json")
+        latency = json.load(open(latency_json))
+        mean = latency["mean"]
+        std = latency["std"]
+        df_latency.loc[idx] = [scene, mean, std]
+
     # Save all to csv
     data = {
         "blender": df_blender,
@@ -167,9 +183,11 @@ if __name__ == "__main__":
         "jacobian": df_jacobian,
         "skybox": df_skybox,
         "polydegree": df_polydegree,
+        "latency": df_latency
     }
     
-    os.makedirs("results", exist_ok=True)
+    output_dir = os.path.join("results", os.path.basename(args.input_dir))
+    os.makedirs(output_dir, exist_ok=True)
     for key, df in data.items():
-        df.to_csv(f"results/{key}.csv", index=False)
-        print(f"Saved {key}.csv")
+        df.to_csv(output_path:=os.path.join(output_dir, f"{key}.csv"), index=False)
+        print(f"Saved {output_path}")

@@ -31,11 +31,11 @@ pretty_names = {
     "fisheyegs": "Fisheye-GS",
 }
 
-def render_scannet():
+def render_scannet(results_dir):
     # Load images
     choices = {
-        "bedroom": 9,
-        "kitchen": 1,
+        "bedroom": 8,
+        "kitchen": 0,
         "office_day": 3,
         "office_night": 22,
         "tool_room": 26,
@@ -43,10 +43,10 @@ def render_scannet():
     }
 
     rois = {
-        "bedroom": [(278, 561, 218, 197), (1437, 853, 163, 164)],
-        "office_day": [(66, 60, 379, 557)],
-        "tool_room": [(963, 11, 626, 561)],
-        "utility_room": [(938, 181, 371, 359)],
+        # "bedroom": [(278, 561, 218, 197), (1437, 853, 163, 164)],
+        # "office_day": [(66, 60, 379, 557)],
+        # "tool_room": [(963, 11, 626, 561)],
+        # "utility_room": [(938, 181, 371, 359)],
     }
 
     scenes = sorted(list(choices.keys()))
@@ -54,12 +54,12 @@ def render_scannet():
     data = {}
     for scene in scenes:
         # Find our result directory
-        ours_result_dirs = glob.glob(f"./output/first_run/scannet_{scene}_*")
+        ours_result_dirs = glob.glob(os.path.join(results_dir, f"scannet_{scene}")) # f"./output/first_run/scannet_{scene}_*")
         assert len(ours_result_dirs) == 1
         ours_result_dir = ours_result_dirs[0]
 
         # Find fisheyegs result directory
-        fisheyegs_result_dirs = glob.glob(f"./output/first_run/fisheyegs_{scene}")
+        fisheyegs_result_dirs = glob.glob(os.path.join(results_dir, f"fisheyegs_{scene}")) # f"./output/first_run/fisheyegs_{scene}")
         assert len(fisheyegs_result_dirs) == 1
         fisheyegs_result_dir = fisheyegs_result_dirs[0]
 
@@ -167,15 +167,16 @@ def render_scannet():
                         bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.5, edgecolor="none")
                     )
 
-
+        output_dir = os.path.join("figures", os.path.basename(results_dir))
+        os.makedirs(output_dir, exist_ok=True)
         for filetype in filetypes:
-            plt.savefig(f"figures/scannet_{subimage+1}.{filetype}", bbox_inches="tight")
+            plt.savefig(os.path.join(output_dir, f"scannet_{subimage+1}.{filetype}"), bbox_inches="tight")
 
 
 """
 Plots two images of the blender scenes. The first row contains ground truth images, the second row contains our results.
 """
-def render_blender():
+def render_blender(results_dir):
     choices = {
         "archiviz": 81,
         "barbershop": 41,
@@ -196,7 +197,7 @@ def render_blender():
     data = {}
     for scene in scenes:
         # Find our result directory
-        ours_result_dirs = glob.glob(f"./output/first_run/blender_{scene}_*")
+        ours_result_dirs = glob.glob(os.path.join(results_dir, f"blender_{scene}_*")) # f"./output/first_run/blender_{scene}_*")
         assert len(ours_result_dirs) == 1
         ours_result_dir = ours_result_dirs[0]
 
@@ -287,17 +288,18 @@ def render_blender():
                         va="top", 
                         bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.5, edgecolor="none")
                     )
-        
+        output_dir = os.path.join("figures", os.path.basename(results_dir))
+        os.makedirs(output_dir, exist_ok=True)
         for filetype in filetypes:
-            plt.savefig(f"figures/blender_{subimage+1}.{filetype}", bbox_inches="tight")
+            plt.savefig(os.path.join(output_dir, f"blender_{subimage+1}.{filetype}"), bbox_inches="tight")
 
 
-def render_skybox():
+def render_skybox(results_dir):
     choice = 73
     rois = [(603, 58, 292, 383)]
 
     # Find result directories
-    result_dirs = glob.glob("./output/first_run/skybox_*")
+    result_dirs = glob.glob(os.path.join(results_dir, f"skybox_*")) # glob.glob("./output/first_run/skybox_*")
 
     # Parse model namespace
     skybox_on = [eval("argparse."+open(os.path.join(d, "cfg_model")).read()).skybox for d in result_dirs]
@@ -395,12 +397,22 @@ def render_skybox():
         )
 
     # Save figure
+    output_dir = os.path.join("figures", os.path.basename(results_dir))
+    os.makedirs(output_dir, exist_ok=True)
     for filetype in filetypes:
-        plt.savefig(f"figures/skybox.{filetype}", bbox_inches="tight")
+        plt.savefig(os.path.join(output_dir, f"skybox.{filetype}"), bbox_inches="tight")
 
 
 if __name__ == "__main__":
-    render_scannet()
-    render_blender()
-    render_skybox()
+    # Parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("results_dir", type=str)
+    args = parser.parse_args()
+
+    # Remove trailing slash
+    args.input_dir = args.input_dir.rstrip("/")
+
+    render_scannet(args.results_dir)
+    render_blender(args.results_dir)
+    render_skybox(args.results_dir)
     
