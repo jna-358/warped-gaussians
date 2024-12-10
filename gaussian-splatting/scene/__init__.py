@@ -55,6 +55,9 @@ class Scene:
         elif os.path.exists(os.path.join(args.source_path, "dslr", "scannetpp")):
             print("Found scannetpp folder, assuming ScanNet++ data set!")
             scene_info = sceneLoadTypeCallbacks["ScanNetPP"](args.source_path, args.white_background, args.eval, fisheye_poly_degree=args.fisheye_poly_degree)
+        elif os.path.exists(os.path.join(args.source_path, "blender-ortho")):
+            print("Found blender-ortho folder, assuming Blender ortho data set!")
+            scene_info = sceneLoadTypeCallbacks["BlenderOrtho"](args.source_path, args.white_background, args.eval)
         else:
             assert False, f"Could not recognize scene type for {args.source_path}"
 

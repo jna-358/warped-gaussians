@@ -276,7 +276,7 @@ def prepare_output_and_logger(model, opt, pipe):
         if model.expname != "":
             model.model_path = os.path.join("./output/", model.expname)
         else:
-            model.model_path = f"{os.path.basename(model.source_path)}_{unique_str[0:10]}"
+            model.model_path = os.path.join(".", "output", f"{os.path.basename(model.source_path)}_{unique_str[0:10]}")
         
     # Set up output folder
     print("Output folder: {}".format(model.model_path))

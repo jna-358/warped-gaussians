@@ -45,7 +45,7 @@ def loadCam(args, id, cam_info, resolution_scale):
         lens_mask = PILtoTorch(cam_info.lens_mask, resolution)
         lens_mask = lens_mask[0, ...]
 
-    distotion_params = None
+    distortion_params = None
     if cam_info.distortion_params is not None:
         distortion_params = torch.from_numpy(cam_info.distortion_params.copy()).float().cuda()
 
@@ -59,7 +59,8 @@ def loadCam(args, id, cam_info, resolution_scale):
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
                   image=gt_image, gt_alpha_mask=loaded_mask,
                   image_name=cam_info.image_name, uid=id, data_device=args.data_device,
-                  lens_mask=lens_mask, distortion_params=distortion_params, fisheye_fov=cam_info.fisheye_fov)
+                  lens_mask=lens_mask, distortion_params=distortion_params, fisheye_fov=cam_info.fisheye_fov, 
+                  ortho_scale=cam_info.ortho_scale)
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []
@@ -79,6 +80,7 @@ def camera_to_JSON(id, camera : Camera):
     pos = W2C[:3, 3]
     rot = W2C[:3, :3]
     serializable_array_2d = [x.tolist() for x in rot]
+
     camera_entry = {
         'id' : id,
         'img_name' : camera.image_name,

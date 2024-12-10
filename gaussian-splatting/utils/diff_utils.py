@@ -33,6 +33,29 @@ def jacobian_spherical(cartesian_coords):
 
     return res
 
+"""
+Orthographic projection
+
+jacobian = 
+z 0 x
+0 z y
+0 0 1
+"""
+def jacobians_all_ortho(cartesian_coords):
+    num_samples = cartesian_coords.shape[0]
+    res = torch.empty((num_samples, 3, 3)).to(cartesian_coords.device)
+    res[:, 0, 0] = cartesian_coords[:, 2]
+    res[:, 0, 1] = 0
+    res[:, 0, 2] = cartesian_coords[:, 0]
+    res[:, 1, 0] = 0
+    res[:, 1, 1] = cartesian_coords[:, 2]
+    res[:, 1, 2] = cartesian_coords[:, 1]
+    res[:, 2, 0] = 0
+    res[:, 2, 1] = 0
+    res[:, 2, 2] = 1
+
+    return res
+
 def jacobian_all(cartesian_coords, polyvals):
     spherical_coords = transform_spherical(cartesian_coords)
     polar_coords = transform_polar(spherical_coords, polyvals)

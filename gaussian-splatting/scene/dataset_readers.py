@@ -41,6 +41,7 @@ class CameraInfo(NamedTuple):
     lens_mask: np.array = None
     distortion_params: np.array = None
     fisheye_fov: np.array = None
+    ortho_scale: np.float32 = None
 
 class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
@@ -162,6 +163,77 @@ def approximate_fisheye_blender(intrinsics, fisheye_poly_degree=8):
         "distortion_params": poly_full
     }
 
+def readBlenderOrthoCameras(path):
+    image_paths = sorted(glob.glob(os.path.join(path, "image", "*.png")))
+    names = sorted([os.path.splitext(os.path.basename(p))[0] for p in image_paths])
+    image_data_paths = [(name, os.path.join(path, "image", name + ".png"), os.path.join(path, "metadata", name + ".npz")) for name in names]
+    image_data_paths = {
+        name: {
+            "image_path": os.path.join(path, "image", name + ".png"), 
+            "metadata_path":  os.path.join(path, "metadata", name + ".npz")
+        } for name in names}
+    
+
+    # Extract intrinsics from metadata
+    intrinsics_keys = [
+        "K",
+        "ortho_scale",
+        "width",
+        "height",
+    ]
+
+    intrinsics = {
+        name: npz2dict(np.load(image_data_paths[name]["metadata_path"]), keys=intrinsics_keys) for name in names
+    }
+
+    # Extract extrinsics from metadata
+    extrinsics_keys = [
+        "camera_matrix"
+    ]
+
+    extrinsics = {
+        name: npz2dict(np.load(image_data_paths[name]["metadata_path"]), keys=extrinsics_keys) for name in names
+    }
+
+    # Rotation correction matrix
+    R_corr = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
+
+    # Load cam_infos
+    cam_infos = []
+
+    for idx, name in enumerate(names):
+        # Extrinsics
+        extrinsic_matrix = extrinsics[name]["camera_matrix"]
+        extrinsic_matrix[:3, :3] = extrinsic_matrix[:3, :3] @ R_corr
+        extrinsic_matrix = np.linalg.inv(extrinsic_matrix)
+        R = extrinsic_matrix[:3, :3].T
+        T = extrinsic_matrix[:3, 3]
+
+        # Intrinsics
+        K = intrinsics[name]["K"]
+        ortho_scale = intrinsics[name]["ortho_scale"] / 10.0
+        width = intrinsics[name]["width"]
+        height = intrinsics[name]["height"]
+        fx = width / ortho_scale
+        fy = height / ortho_scale
+        fov_x = 2 * np.arctan(width / (2 * fx))
+        fov_y = 2 * np.arctan(height / (2 * fy))
+        uid = idx
+
+        # Load image
+        image_path = image_data_paths[name]["image_path"]
+        image = Image.open(image_path)
+
+        cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=fov_y.item(), FovX=fov_x.item(), image=image,
+                              image_path=image_path, image_name=name, width=width.item(),
+                              height=height.item(), lens_mask=None, distortion_params=None,
+                              fisheye_fov=None, ortho_scale=ortho_scale.item())
+        
+        cam_infos.append(cam_info)
+    
+    return cam_infos        
+
+
 def readBlenderFisheyeCameras(path, fisheye_poly_degree=8):
     image_paths = sorted(glob.glob(os.path.join(path, "image", "*.png")))
     names = [os.path.splitext(os.path.basename(p))[0] for p in image_paths]
@@ -172,7 +244,7 @@ def readBlenderFisheyeCameras(path, fisheye_poly_degree=8):
             "metadata_path":  os.path.join(path, "metadata", name + ".npz")
         } for name in names}
 
-    # Extract intrinsics from metadata (missing: res_x, res_y, sensor_width_mm, sensor_height_mm)
+    # Extract intrinsics from metadata
     intrinsics_keys = [
         "K",
         "sensor_width_mm",
@@ -280,6 +352,33 @@ def storePly(path, xyz, rgb):
     vertex_element = PlyElement.describe(elements, 'vertex')
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
+
+def readBlenderOrthoInfo(path, images, eval, llffhold=8):
+    # Create cam_infos
+    cam_infos = readBlenderOrthoCameras(path)
+
+    # Split into train and test
+    if eval:
+        train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
+        test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+    else:
+        train_cam_infos = cam_infos
+        test_cam_infos = []
+    
+    nerf_normalization = getNerfppNorm(train_cam_infos)
+
+    # Load sparse point cloud
+    ply_path = os.path.join(path, "sparse.ply")
+    pcd = fetchPly(ply_path)
+
+    # Create scene_info
+    scene_info = SceneInfo(point_cloud=pcd,
+                           train_cameras=train_cam_infos,
+                           test_cameras=test_cam_infos,
+                           nerf_normalization=nerf_normalization,
+                           ply_path=ply_path)
+    
+    return scene_info
 
 def readBlenderFisheyeInfo(path, images, eval, llffhold=8, fisheye_poly_degree=8):
     # Create cam_infos
@@ -640,5 +739,6 @@ sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,
     "Blender" : readNerfSyntheticInfo,
     "BlenderFisheye": readBlenderFisheyeInfo,
-    "ScanNetPP": readScannetppInfo
+    "ScanNetPP": readScannetppInfo,
+    "BlenderOrtho": readBlenderOrthoInfo
 }

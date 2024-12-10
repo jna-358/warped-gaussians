@@ -18,7 +18,7 @@ from utils.graphics_utils import getProjectionMatrix
 import numpy as np
 import scipy.spatial.transform
 import configparser
-from utils.diff_utils import jacobian_all
+from utils.diff_utils import jacobian_all, jacobians_all_ortho
 import itertools
 from utils.general_utils import build_convariance_matrix, gram_schmidt, gram_schmidt_ordered
 
@@ -364,10 +364,10 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
     # Set up rasterization configuration
     FOVX = viewpoint_camera.FoVx
     FOVY = viewpoint_camera.FoVy
+
     tanfovx = math.tan(FOVX * 0.5)
     tanfovy = math.tan(FOVY * 0.5)
 
-    
     RESOLUTION_X = viewpoint_camera.image_width
     RESOLUTION_Y = viewpoint_camera.image_height
 
@@ -413,35 +413,48 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
     poly_coeffs = viewpoint_camera.distortion_params
     
     if not pipe.jacobians_off:
-        # Compute jacobians
-        jacobians = jacobian_all(means3D, poly_coeffs)
+        if poly_coeffs is not None:
+            # Compute jacobians
+            jacobians = jacobian_all(means3D, poly_coeffs)
 
-        # Check for NaN and inf values
-        assert not torch.any(torch.isnan(jacobians)), "NaN values in jacobians"
-        assert not torch.any(torch.isinf(jacobians)), "Inf values in jacobians"
+            # Check for NaN and inf values
+            assert not torch.any(torch.isnan(jacobians)), "NaN values in jacobians"
+            assert not torch.any(torch.isinf(jacobians)), "Inf values in jacobians"
+        elif viewpoint_camera.ortho_scale is not None:
+            jacobians = jacobians_all_ortho(means3D)
+        else:
+            raise NotImplementedError("Neither fisheye nor ortho distortion is enabled.")
 
-    # Convert to spherical coordinates
-    radius = torch.norm(means3D, dim=1)
-    theta = torch.arccos(means3D[:, 2] / radius)
-    phi = torch.atan2(means3D[:, 1], means3D[:, 0])
+    if poly_coeffs is not None:
+        # Convert to spherical coordinates
+        radius = torch.norm(means3D, dim=1)
+        theta = torch.arccos(means3D[:, 2] / radius)
+        phi = torch.atan2(means3D[:, 1], means3D[:, 0])
 
-    # Remove points outside the field of view
-    fov_fisheye = viewpoint_camera.fisheye_fov
+        # Remove points outside the field of view
+        fov_fisheye = viewpoint_camera.fisheye_fov
 
-    if fov_fisheye:
-        removal_mask = (theta < fov_fisheye / 2)
-        opacity = opacity * removal_mask[:, None].float()
+        if fov_fisheye:
+            removal_mask = (theta < fov_fisheye / 2)
+            opacity = opacity * removal_mask[:, None].float()
 
-    # Apply distortion 
-    theta_mod = torch.zeros_like(theta, device=theta.device)
-    for i, coeff in enumerate(poly_coeffs):
-        theta_mod += coeff * theta ** i
+        # Apply distortion 
+        theta_mod = torch.zeros_like(theta, device=theta.device)
+        for i, coeff in enumerate(poly_coeffs):
+            theta_mod += coeff * theta ** i
 
-    # Convert back to cartesian coordinates
-    x_res = torch.sin(theta_mod) * torch.cos(phi) * radius
-    y_res = torch.sin(theta_mod) * torch.sin(phi) * radius
-    z_res = torch.cos(theta_mod) * radius
-    means3D = torch.stack([x_res, y_res, z_res], dim=1)
+        # Convert back to cartesian coordinates
+        x_res = torch.sin(theta_mod) * torch.cos(phi) * radius
+        y_res = torch.sin(theta_mod) * torch.sin(phi) * radius
+        z_res = torch.cos(theta_mod) * radius
+        means3D = torch.stack([x_res, y_res, z_res], dim=1)
+
+    # Apply orthographic distortion
+    if viewpoint_camera.ortho_scale is not None:
+        x_res = means3D[:, 0] * means3D[:, 2]
+        y_res = means3D[:, 1] * means3D[:, 2]
+        z_res = means3D[:, 2]
+        means3D = torch.stack([x_res, y_res, z_res], dim=1)
 
     if not pipe.jacobians_off:
         # Compute initial axes

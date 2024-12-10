@@ -18,7 +18,7 @@ class Camera(nn.Module):
     def __init__(self, colmap_id, R, T, FoVx, FoVy, image, gt_alpha_mask,
                  image_name, uid, lens_mask=None,
                  trans=np.array([0.0, 0.0, 0.0]), scale=1.0, data_device = "cuda",
-                 distortion_params=None, fisheye_fov=None
+                 distortion_params=None, fisheye_fov=None, ortho_scale=None
                  ):
         super(Camera, self).__init__()
 
@@ -31,6 +31,8 @@ class Camera(nn.Module):
         self.image_name = image_name
         self.distortion_params = distortion_params
         self.fisheye_fov = fisheye_fov
+        self.ortho_scale = ortho_scale
+
         try:
             self.data_device = torch.device(data_device)
         except Exception as e:
