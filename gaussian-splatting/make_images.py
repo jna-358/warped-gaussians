@@ -402,6 +402,88 @@ def render_skybox(results_dir):
     for filetype in filetypes:
         plt.savefig(os.path.join(output_dir, f"skybox.{filetype}"), bbox_inches="tight")
 
+def render_ortho(results_dir):
+    choices = [1, 5, 8]
+    rois = []
+    num_images = len(choices)
+
+    # Load images
+    iter_dirs = glob.glob(os.path.join(results_dir, "ortho_lego", "render", "iter_*"))
+    iter_dir = sorted(iter_dirs, key=lambda x: int(os.path.basename(x).split("_")[-1]))[-1]
+    image_paths = glob.glob(os.path.join(iter_dir, "test", "rgb", "*.png"))
+    image_names = [os.path.basename(p).split(".")[0] for p in image_paths]
+    image_names = sorted(image_names)
+    image_names = [image_names[i] for i in choices]
+
+    data = []
+    for image_name in image_names:
+        # Load prediction
+        prediction = Image.open(os.path.join(iter_dir, "test", "rgb", f"{image_name}.png"))
+
+        # Load ground truth
+        gt = Image.open(os.path.join(iter_dir, "test", "gt", f"{image_name}.png"))
+
+        # Load depth
+        depth = Image.open(os.path.join(iter_dir, "test", "depth", f"{image_name}.png"))
+
+        # Load psnr
+        psnr = json.load(open(os.path.join(iter_dir, "test", "results.json")))["perImage"][f"{image_name}.png"]["PSNR"]
+
+        data.append({
+            "prediction": prediction,
+            "gt": gt,
+            "depth": depth,
+            "psnr": psnr,
+        })
+    
+    # Plot as 3 x num_images grid, top row is ground truth, middle is ours rgb and bottom is ours depth
+    rows = 3
+    cols = num_images
+    fig = plt.figure(figsize=(cols*3, rows*3))
+    grid = ImageGrid(fig, 111, nrows_ncols=(rows, cols), axes_pad=0.1, label_mode="all")
+
+    for idx, d in enumerate(data):
+        grid[0*cols+idx].imshow(d["gt"], interpolation="none")
+        grid[1*cols+idx].imshow(d["prediction"], interpolation="none")
+        grid[2*cols+idx].imshow(d["depth"], interpolation="none")
+
+
+        # Add row labels
+        if idx == 0:
+            grid[0*cols+idx].set_ylabel("Ground Truth")
+            grid[1*cols+idx].set_ylabel("Ours (Color)")
+            grid[2*cols+idx].set_ylabel("Ours (Depth)")
+
+        # Hide axes (except for x and y labels)
+        for irow in range(rows):
+            grid[irow*cols+idx].set_xticks([])
+            grid[irow*cols+idx].set_yticks([])
+            grid[irow*cols+idx].tick_params(axis='both', which='both', length=0)
+
+            # Hide spines
+            grid[irow*cols+idx].spines['top'].set_visible(False)
+            grid[irow*cols+idx].spines['right'].set_visible(False)
+            grid[irow*cols+idx].spines['bottom'].set_visible(False)
+            grid[irow*cols+idx].spines['left'].set_visible(False)
+
+        # Add PSNR values
+        grid[1*cols+idx].text(
+            0.97, 0.95, f"{d['psnr']:.1f}dB", 
+            transform=grid[1*cols+idx].transAxes, 
+            fontsize=10, 
+            color="white", 
+            ha="right", 
+            va="top", 
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.5, edgecolor="none")
+        )
+
+    # Save figure
+    output_dir = os.path.join("figures", os.path.basename(results_dir))
+    os.makedirs(output_dir, exist_ok=True)
+
+    for filetype in filetypes:
+        plt.savefig(os.path.join(output_dir, f"ortho.{filetype}"), bbox_inches="tight")
+
 
 if __name__ == "__main__":
     # Parse arguments
@@ -410,8 +492,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Remove trailing slash
-    args.input_dir = args.input_dir.rstrip("/")
+    args.results_dir = args.results_dir.rstrip("/")
 
+    render_ortho(args.results_dir)
     render_scannet(args.results_dir)
     render_blender(args.results_dir)
     render_skybox(args.results_dir)

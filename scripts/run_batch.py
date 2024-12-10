@@ -42,6 +42,10 @@ tasks_degree = [
     f"python train.py --expname poydegree_{i} --eval -r 1 --latency --fisheye_poly_degree {i} -s /data/scannet/utility_room && python metrics.py -m ./output/polydegree_{i}" for i in [2, 4, 6, 8, 10]
 ]
 
+tasks_ortho = [
+    "python train.py --expname ortho_lego --white_background --eval --latency -r 1 -s /data/blender-cycles/scenes/lego && python metrics.py -m ./output/ortho_lego",
+]
+
 
 tasks_all = tasks_scannet + tasks_jacobian + tasks_degree
 
