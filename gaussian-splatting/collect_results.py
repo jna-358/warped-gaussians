@@ -176,6 +176,25 @@ if __name__ == "__main__":
         std = latency["std"]
         df_latency.loc[idx] = [scene, mean, std]
 
+    # Ortho experiments
+    subdirs_ortho = [sub for sub in subdirs if sub.startswith("ortho")]
+    assert len(subdirs_ortho) == 1, "Only one ortho experiment is allowed"
+    subdir = subdirs_ortho[0]
+
+    # Parse results.json
+    results_json = os.path.join(args.input_dir, subdir, "results.json")
+    results = json.load(open(results_json))
+    iter_keys = list(results.keys())
+    highest_iter = sorted(iter_keys, key=lambda x: int(x.split("_")[-1]))[-1]
+    results = results[highest_iter]["test"]
+
+    # Parse tensorboard data
+    tensorboard_data = get_tensorboard_data(os.path.join(args.input_dir, subdir), keys=["total_points"])
+
+    # Create ortho dataframe
+    df_ortho = pd.DataFrame(columns=["scene", "gaussians", "time", "psnr", "ssim", "lpips"])
+    df_ortho.loc[0] = ["lego", tensorboard_data["total_points"], tensorboard_data["time"], results["PSNR"], results["SSIM"], results["LPIPS"]]
+
     # Save all to csv
     data = {
         "blender": df_blender,
@@ -183,7 +202,8 @@ if __name__ == "__main__":
         "jacobian": df_jacobian,
         "skybox": df_skybox,
         "polydegree": df_polydegree,
-        "latency": df_latency
+        "latency": df_latency,
+        "ortho": df_ortho
     }
     
     output_dir = os.path.join("results", os.path.basename(args.input_dir))
