@@ -46,8 +46,21 @@ tasks_ortho = [
     "python train.py --expname ortho_lego --white_background --eval --latency -r 1 -s /data/blender-cycles/scenes/lego && python metrics.py -m ./output/ortho_lego",
 ]
 
+tasks_scannet_extra = [
+    f"python train.py --expname scannet_extra_{scene} --eval -r 1 --latency --fisheye_poly_degree 8 -s /data/scannet_extra/{scene} && python metrics.py -m ./output/scannet_extra_{scene}" for scene in [
+        # "bathtub",
+        # "conference_room",
+        # "electrical_room",
+        "hotel",
+        # "plant",
+        # "printer",
+    ]
+]
 
-tasks_all = tasks_scannet + tasks_jacobian + tasks_degree
+
+# tasks_all = tasks_scannet + tasks_jacobian + tasks_degree
+
+tasks_all = tasks_scannet_extra
 
 
 # Define a function to process a single string

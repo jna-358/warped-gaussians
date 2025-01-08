@@ -83,7 +83,7 @@ def approx_distortion_poly(cameras_dict, fisheye_poly_degree=8):
         theta_post = spherical_post[1]
         indices_violoation = np.where(np.diff(theta_post) < 0)[0]
         filter_index = len(theta_post)
-        max_theta_pre = None
+        max_theta_pre = np.pi
         if len(indices_violoation) > 0:
             filter_index = indices_violoation[0]
             max_theta_pre = theta_pre[filter_index]

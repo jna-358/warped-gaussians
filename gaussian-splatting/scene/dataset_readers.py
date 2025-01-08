@@ -466,6 +466,11 @@ def scannet_images_dict(colmap_dir):
         name = line.split()[-1]
         camera_id = int(line.split()[-2])
 
+        # Check if image exists
+        if not os.path.exists(os.path.join(colmap_dir, "dslr", "resized_images", name)):
+            print(f"Image {name} does not exist!")
+            continue
+
         # Convert to transformation matrices
         R = quat_to_rotm(np.array([quat]))[0]
         T = np.zeros((4, 4), dtype=np.float32)

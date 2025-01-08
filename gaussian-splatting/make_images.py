@@ -29,6 +29,12 @@ pretty_names = {
     "utility": "Utility Room",
     "ours": "Ours",
     "fisheyegs": "Fisheye-GS",
+    "bathtub": "Bathtub",
+    "conference_room": "Conference Room",
+    "electrical_room": "Electrical Room",
+    "hotel": "Hotel",
+    "plant": "Plant",
+    "printer": "Printer",
 }
 
 def render_scannet(results_dir):
@@ -484,6 +490,185 @@ def render_ortho(results_dir):
     for filetype in filetypes:
         plt.savefig(os.path.join(output_dir, f"ortho.{filetype}"), bbox_inches="tight")
 
+def render_blender_mirror(results_dir):
+    roi = (468, 315, 267, 219)
+    image_id = 25
+
+    # Convert roi from cv2 to pil format
+    roi = (roi[0], roi[1], roi[0] + roi[2], roi[1] + roi[3])
+
+    # Find result directories
+    result_dirs = glob.glob(os.path.join(results_dir, "blender_barbershop_*"))
+    assert len(result_dirs) == 1, "Expected exactly one result directory"
+    result_dir = result_dirs[0]
+    iter_dirs = glob.glob(os.path.join(result_dir, "render", "iter_*"))
+    iter_dir = sorted(iter_dirs, key=lambda x: int(os.path.basename(x).split("_")[-1]))[-1]
+
+    # Load images
+    rgb = Image.open(os.path.join(iter_dir, "test", "rgb", f"frame{image_id:04d}.png"))
+    gt = Image.open(os.path.join(iter_dir, "test", "gt", f"frame{image_id:04d}.png"))
+    depth = Image.open(os.path.join(iter_dir, "test", "depth", f"frame{image_id:04d}.png"))
+    error = Image.open(os.path.join(iter_dir, "test", "error", f"frame{image_id:04d}.png"))
+
+    # Crop to ROI
+    rgb = rgb.crop(roi)
+    gt = gt.crop(roi)
+    depth = depth.crop(roi)
+    error = error.crop(roi)
+
+    # Normalize depth and error
+    depth_min = np.min(np.array(depth))
+    depth_max = np.max(np.array(depth))
+    depth = (np.array(depth) - depth_min) / (depth_max - depth_min) * 255
+    depth = Image.fromarray(depth.astype(np.uint8))
+
+    error_min = np.min(np.array(error))
+    error_max = np.max(np.array(error))
+    error = (np.array(error) - error_min) / (error_max - error_min) * 255
+    error = Image.fromarray(error.astype(np.uint8))
+    error = error.convert("L")
+
+
+    # Plot in a 1x4 grid
+    rows = 1
+    cols = 4
+    fig = plt.figure(figsize=(cols*3, rows*3))
+    grid = ImageGrid(fig, 111, nrows_ncols=(rows, cols), axes_pad=0.1, label_mode="all")
+
+    grid[0].imshow(gt, interpolation="none")
+    grid[1].imshow(rgb, interpolation="none")
+    grid[2].imshow(depth, interpolation="none")
+    grid[3].imshow(error, interpolation="none")
+
+    # Add column labels
+    grid[0].set_xlabel("Ground Truth")
+    grid[1].set_xlabel("Ours (Color)")
+    grid[2].set_xlabel("Ours (Depth)")
+    grid[3].set_xlabel("Error")
+
+    # Hide axes (except for x and y labels)
+    for i in range(cols):
+        grid[i].set_xticks([])
+        grid[i].set_yticks([])
+        grid[i].tick_params(axis='both', which='both', length=0)
+
+        # Hide spines
+        grid[i].spines['top'].set_visible(False)
+        grid[i].spines['right'].set_visible(False)
+        grid[i].spines['bottom'].set_visible(False)
+        grid[i].spines['left'].set_visible(False)
+
+    # Save figure
+    output_dir = os.path.join("figures", os.path.basename(results_dir))
+    os.makedirs(output_dir, exist_ok=True)
+
+    for filetype in filetypes:
+        plt.savefig(os.path.join(output_dir, f"blender_mirror.{filetype}"), bbox_inches="tight")
+    
+def render_scannet_extra(results_dir):
+    scene_names = ["bathtub", 
+                   "conference_room", 
+                   "electrical_room", 
+                   "plant", 
+                   "printer"]
+    choices = {
+        "bathtub": 0,
+        "conference_room": 0,
+        "electrical_room": 0,
+        "hotel": 0,
+        "plant": 1,
+        "printer": 3,
+    }
+    rois = []
+
+    data = []
+    for scene_name in scene_names:
+        # Get iter directory
+        iter_dirs = glob.glob(os.path.join(results_dir, f"scannet_extra_{scene_name}", "render", "iter_*"))
+        iter_dir = sorted(iter_dirs, key=lambda x: int(os.path.basename(x).split("_")[-1]))[-1]
+
+        # Load images
+        rgb_path = sorted(glob.glob(os.path.join(iter_dir, "test", "rgb", "*.png")))[choices[scene_name]]
+        gt_path = sorted(glob.glob(os.path.join(iter_dir, "test", "gt", "*.png")))[choices[scene_name]]
+        depth_path = sorted(glob.glob(os.path.join(iter_dir, "test", "depth", "*.png")))[choices[scene_name]]
+        error_path = sorted(glob.glob(os.path.join(iter_dir, "test", "error", "*.png")))[choices[scene_name]]
+
+        rgb = Image.open(rgb_path)
+        gt = Image.open(gt_path)
+        depth = Image.open(depth_path)
+        error = Image.open(error_path)
+
+        # Load psnr
+        psnr = json.load(open(os.path.join(iter_dir, "test", "results.json")))["perImage"][os.path.basename(rgb_path)]["PSNR"]
+
+        data.append({
+            "rgb": rgb,
+            "gt": gt,
+            "depth": depth,
+            "error": error,
+            "psnr": psnr,
+        })
+
+    # Plot as 5 x 3 grid, with each row being gt, ours (rgb), ours (depth)
+    rows = len(scene_names)
+    cols = 3
+
+    fig = plt.figure(figsize=(cols*3, rows*3))
+    grid = ImageGrid(fig, 111, nrows_ncols=(rows, cols), axes_pad=0.1, label_mode="all")
+
+    for idx, d in enumerate(data):
+        grid[idx*cols+0].imshow(d["gt"], interpolation="none")
+        grid[idx*cols+1].imshow(d["rgb"], interpolation="none")
+        grid[idx*cols+2].imshow(d["depth"], interpolation="none")
+
+
+        # Add labels
+        grid[idx*cols+0].set_ylabel(pretty_names[scene_names[idx]])
+        if idx == 0:
+            grid[idx*cols+0].set_xlabel("Ground Truth")
+            grid[idx*cols+1].set_xlabel("Ours (Color)")
+            grid[idx*cols+2].set_xlabel("Ours (Depth)")
+            grid[idx*cols+0].xaxis.set_label_position('top')
+            grid[idx*cols+1].xaxis.set_label_position('top')
+            grid[idx*cols+2].xaxis.set_label_position('top')
+        
+        # Hide axes (except for x and y labels)
+        for icol in range(cols):
+            grid[idx*cols+icol].set_xticks([])
+            grid[idx*cols+icol].set_yticks([])
+            grid[idx*cols+icol].tick_params(axis='both', which='both', length=0)
+
+            # Hide spines
+            grid[idx*cols+icol].spines['top'].set_visible(False)
+            grid[idx*cols+icol].spines['right'].set_visible(False)
+            grid[idx*cols+icol].spines['bottom'].set_visible(False)
+            grid[idx*cols+icol].spines['left'].set_visible(False)
+
+            if icol == 1:
+                grid[idx*cols+icol].text(
+                    0.97, 0.95, f"{d['psnr']:.1f}dB", 
+                    transform=grid[idx*cols+icol].transAxes, 
+                    fontsize=10, 
+                    color="white", 
+                    ha="right", 
+                    va="top", 
+                    bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.5, edgecolor="none")
+                )
+
+
+
+
+    # Save figure
+    output_dir = os.path.join("figures", os.path.basename(results_dir))
+    os.makedirs(output_dir, exist_ok=True)
+
+    for filetype in filetypes:
+        plt.savefig(os.path.join(output_dir, f"scannet_extra.{filetype}"), bbox_inches="tight")
+
+
+
+
+
 
 if __name__ == "__main__":
     # Parse arguments
@@ -494,8 +679,9 @@ if __name__ == "__main__":
     # Remove trailing slash
     args.results_dir = args.results_dir.rstrip("/")
 
-    render_ortho(args.results_dir)
-    render_scannet(args.results_dir)
-    render_blender(args.results_dir)
-    render_skybox(args.results_dir)
-    
+    # render_ortho(args.results_dir)
+    # render_scannet(args.results_dir)
+    # render_blender(args.results_dir)
+    # render_skybox(args.results_dir)
+    # render_blender_mirror(args.results_dir)
+    render_scannet_extra(args.results_dir)

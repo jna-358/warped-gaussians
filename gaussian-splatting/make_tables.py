@@ -23,6 +23,12 @@ pretty_names = {
     "utility": "Utility Room",
     "ours": "Ours",
     "fisheyegs": "Fisheye-GS",
+    "bathtub": "Bathtub",
+    "conference_room": "Conference Room",
+    "electrical_room": "Electrical Room",
+    "hotel": "Hotel",
+    "plant": "Plant",
+    "printer": "Printer",
 }
 
 def is_smaller(a, b, decimals, include_equal=False):
@@ -360,3 +366,31 @@ if __name__ == "__main__":
 
     print(table_str)
 
+
+    # Scannet Extra experiments
+    csv = os.path.join(args.results_dir, "scannet_extra.csv") # "./results/scannet_extra.csv"
+    df_scannet_extra = pd.read_csv(csv)
+
+    table_str = "\\toprule\n"
+    table_str += "\\textbf{Scene} & \\textbf{\#Gaussians}$\\downarrow$  & \\textbf{PSNR}$\\uparrow$ & \\textbf{SSIM}$\\uparrow$ & \\textbf{LPIPS}$\\downarrow$ \\\\\n"
+
+    table_str += "\\midrule\n"
+
+    for idx in range(0, len(df_scannet_extra)):
+        row = df_scannet_extra.iloc[idx]
+
+        str_gaussians = f"{int(row['gaussians']):,}"
+        str_psnr = f"{row['psnr']:.{decimals_psnr}f}"
+        str_ssim = f"{row['ssim']:.{decimals_ssim}f}"
+        str_lpips = f"{row['lpips']:.{decimals_lpips}f}"
+        scene_str = pretty_names[row['scene']]
+
+        table_str += f"{scene_str} & {str_gaussians} & {str_psnr} & {str_ssim} & {str_lpips} \\\\\n"
+
+    table_str += "\\bottomrule\n"
+
+    print("######################")
+    print("SCANNET EXTRA")
+    print()
+
+    print(table_str)

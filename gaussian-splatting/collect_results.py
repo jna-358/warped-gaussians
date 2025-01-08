@@ -64,7 +64,7 @@ if __name__ == "__main__":
         df_blender.loc[idx] = [scene, tensorboard_data["total_points"], tensorboard_data["time"], results["PSNR"], results["SSIM"], results["LPIPS"]]
 
     # Eval scannet experiments
-    subdirs_scannet = sorted([sub for sub in subdirs if sub.startswith("scannet")])
+    subdirs_scannet = sorted([sub for sub in subdirs if sub.startswith("scannet") and not sub.startswith("scannet_extra")])
 
     df_scannet = pd.DataFrame(columns=["scene", "method", "gaussians", "psnr", "ssim", "lpips"])
     for idx, sub in enumerate(tqdm.tqdm(subdirs_scannet, desc="Scannet experiments")):
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     df_polydegree = df_polydegree.sort_values(by="polydegree")
 
     # Latency experiments
-    subdirs_scannet = sorted([sub for sub in subdirs if sub.startswith("scannet")])
+    subdirs_scannet = sorted([sub for sub in subdirs if sub.startswith("scannet") and not sub.startswith("scannet_extra")])
     df_latency = pd.DataFrame(columns=["scene", "mean", "std"])
 
     for idx, sub in enumerate(tqdm.tqdm(subdirs_scannet, desc="Latency experiments")):
@@ -195,6 +195,30 @@ if __name__ == "__main__":
     df_ortho = pd.DataFrame(columns=["scene", "gaussians", "time", "psnr", "ssim", "lpips"])
     df_ortho.loc[0] = ["lego", tensorboard_data["total_points"], tensorboard_data["time"], results["PSNR"], results["SSIM"], results["LPIPS"]]
 
+
+    # Collect scannet extra results
+    scene_names = ["bathtub", "conference_room", "electrical_room", "plant", "printer"]
+    subdirs = [os.path.join(args.input_dir, f"scannet_extra_{scene}") for scene in scene_names]
+    df_scannet_extra = pd.DataFrame(columns=["scene", "gaussians", "psnr", "ssim", "lpips"])
+
+    for idx, sub in enumerate(tqdm.tqdm(subdirs, desc="Scannet extra experiments")):
+        scene = scene_names[idx]
+
+        # Parse results.json
+        results_json = os.path.join(sub, "results.json")
+        results = json.load(open(results_json))
+        iter_keys = list(results.keys())
+
+        highest_iter = sorted(iter_keys, key=lambda x: int(x.split("_")[-1]))[-1]
+        results = results[highest_iter]["test"]
+
+        # Parse tensorboard data
+        tensorboard_data = get_tensorboard_data(sub, keys=["total_points"])
+
+        # Create a new row with index idx
+        df_scannet_extra.loc[idx] = [scene, tensorboard_data["total_points"], results["PSNR"], results["SSIM"], results["LPIPS"]]
+
+
     # Save all to csv
     data = {
         "blender": df_blender,
@@ -203,7 +227,8 @@ if __name__ == "__main__":
         "skybox": df_skybox,
         "polydegree": df_polydegree,
         "latency": df_latency,
-        "ortho": df_ortho
+        "ortho": df_ortho,
+        "scannet_extra": df_scannet_extra
     }
     
     output_dir = os.path.join("results", os.path.basename(args.input_dir))
