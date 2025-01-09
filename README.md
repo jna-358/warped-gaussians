@@ -22,6 +22,9 @@ It contains an extension to the 3D Gaussian Splatting method to arbitrary optics
   _Department of Computer Science, Kiel University, Germany_
 
 
+
+![Teaser Figure](/figures/teaser.gif)
+
 ## Setup 
 Either run the code locally with the same prequisites as the original 3DGS implementation or use the provided Dockerfile to build a suitable Docker image using `build_docker.sh`. You might need to adjust the CUDA-related parameters within the Dockerfile to fit to your experimental setup. Additionally, there are utility scripts for building and running the image. For running, adjust the mount paths in `run_docker.sh` to fit your directory structure. A typical training command would look like this:
 ```bash

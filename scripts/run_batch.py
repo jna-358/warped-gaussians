@@ -4,7 +4,7 @@ import multiprocessing as mp
 import time
 import random
 
-gpus = ["0", "1", "2"]
+gpus = ["0", "1"]
 
 tasks_blender = [
     f"python train.py --expname blender_{scene} --eval -r 1 --latency --skybox --fisheye_poly_degree 8 -s /data/blender-cycles/scenes/{scene} && python metrics.py -m ./output/blender_{scene}" for scene in [
@@ -60,7 +60,7 @@ tasks_scannet_extra = [
 
 # tasks_all = tasks_scannet + tasks_jacobian + tasks_degree
 
-tasks_all = tasks_scannet_extra
+tasks_all = tasks_scannet
 
 
 # Define a function to process a single string

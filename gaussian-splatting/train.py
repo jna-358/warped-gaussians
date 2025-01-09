@@ -31,6 +31,7 @@ import configparser
 from utils.general_utils import build_rotation, rotation_matrix_to_quaternion_batched
 import time
 import json
+import shutil
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -178,6 +179,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # # Log and save
             if config["stop-training"]["skip-training"] != "true":
                 training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, dataset, scene, render, (pipe, background), {})
+            if iteration in saving_iterations:
+                print(f"\n[ITER {iteration}] Saving Gaussians")
+                scene.save(iteration)
+
 
             # Densification
             if config["stop-training"]["skip-training"] != "true":
@@ -263,6 +268,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 
                 torch.cuda.empty_cache()
 
+
         if opt.dryrun:
             print("Dryrun completed, exiting.")
             return
@@ -311,6 +317,8 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
         render_types = ["gt", "rgb", "error", "depth"]
         
         # Create dirs
+        iter_path = os.path.join(dataset.model_path, "render", f"iter_{iteration}")
+        shutil.rmtree(iter_path, ignore_errors=True)
         os.makedirs(iter_path:=os.path.join(dataset.model_path, "render", f"iter_{iteration}"))
         for config in validation_configs:
             for render_type in render_types:
@@ -394,8 +402,8 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 30_000])
-    parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[1_000, 7_000])
+    parser.add_argument("--save_iterations", nargs="+", type=int, default=[1_000, 7_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
