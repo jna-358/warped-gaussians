@@ -163,7 +163,7 @@ def approximate_fisheye_blender(intrinsics, fisheye_poly_degree=8):
         "distortion_params": poly_full
     }
 
-def readBlenderOrthoCameras(path):
+def readBlenderOrthoCameras(path, white_background):
     image_paths = sorted(glob.glob(os.path.join(path, "image", "*.png")))
     names = sorted([os.path.splitext(os.path.basename(p))[0] for p in image_paths])
     image_data_paths = [(name, os.path.join(path, "image", name + ".png"), os.path.join(path, "metadata", name + ".npz")) for name in names]
@@ -353,9 +353,9 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readBlenderOrthoInfo(path, images, eval, llffhold=8):
+def readBlenderOrthoInfo(path, white_background, eval, llffhold=8):
     # Create cam_infos
-    cam_infos = readBlenderOrthoCameras(path)
+    cam_infos = readBlenderOrthoCameras(path, white_background)
 
     # Split into train and test
     if eval:
@@ -380,7 +380,8 @@ def readBlenderOrthoInfo(path, images, eval, llffhold=8):
     
     return scene_info
 
-def readBlenderFisheyeInfo(path, images, eval, llffhold=8, fisheye_poly_degree=8):
+# sceneLoadTypeCallbacks["BlenderFisheye"](args.source_path, args.white_background, args.eval, fisheye_poly_degree=args.fisheye_poly_degree)
+def readBlenderFisheyeInfo(path, background, eval, llffhold=8, fisheye_poly_degree=8):
     # Create cam_infos
     cam_infos = readBlenderFisheyeCameras(path, fisheye_poly_degree=fisheye_poly_degree)
 

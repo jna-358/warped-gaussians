@@ -43,12 +43,12 @@ class Scene:
 
         assert os.path.exists(args.source_path), f"Could not find source path {args.source_path}"
 
-
         if os.path.exists(os.path.join(args.source_path, "sparse")):
-            scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
+            print("Found sparse directory, assuming colmap data set!")
+            raise NotImplementedError
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             print("Found transforms_train.json file, assuming Blender data set!")
-            scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
+            raise NotImplementedError
         elif os.path.exists(os.path.join(args.source_path, "blender-fisheye")):
             print("Found blender-fisheye folder, assuming Blender fisheye data set!")
             scene_info = sceneLoadTypeCallbacks["BlenderFisheye"](args.source_path, args.white_background, args.eval, fisheye_poly_degree=args.fisheye_poly_degree)
