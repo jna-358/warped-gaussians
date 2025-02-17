@@ -22,6 +22,7 @@ from arguments import ModelParams, PipelineParams, get_combined_args
 from gaussian_renderer import GaussianModel
 from scipy.spatial.transform import Rotation
 from scipy.spatial.transform import Slerp
+import numpy as np
 
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background, num_frames=100, view_start=0, view_end=-1):
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
@@ -31,11 +32,15 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     # Get first and last view
     first_view = views[view_start]
     last_view = views[view_end]
-    R_first = Rotation.from_matrix(first_view.world_view_transform[:3, :3].cpu().numpy())
-    R_last = Rotation.from_matrix(last_view.world_view_transform[:3, :3].cpu().numpy())
-    T_first = first_view.world_view_transform[3, :3].cpu().numpy()
-    T_last = last_view.world_view_transform[3, :3].cpu().numpy()
-    R_sequence = Rotation.from_matrix([first_view.R, last_view.R])
+    tform_first = first_view.world_view_transform.cpu().numpy()
+    tform_last = last_view.world_view_transform.cpu().numpy()
+    tform_first = np.linalg.inv(tform_first)
+    tform_last = np.linalg.inv(tform_last)
+    R_first = Rotation.from_matrix(tform_first[:3, :3])
+    R_last = Rotation.from_matrix(tform_last[:3, :3])
+    T_first = tform_first[3, :3]
+    T_last = tform_last[3, :3]
+    R_sequence = Rotation.from_matrix([R_first.as_matrix(), R_last.as_matrix()])
 
     print(f"R_first = {R_first.as_matrix()!r}")
     print (f"R_last = {R_last.as_matrix()!r}")
@@ -49,8 +54,11 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     for idx in tqdm(range(num_frames), desc="Rendering progress"):
         T_current = T_first + (T_last - T_first) * idx / num_frames
         R_current = slerp(idx / num_frames).as_matrix()
-        view.world_view_transform[:3, :3] = torch.from_numpy(R_current).float().cuda()
-        view.world_view_transform[3, :3] = torch.from_numpy(T_current).float().cuda()
+        tform_current = np.eye(4)
+        tform_current[:3, :3] = R_current
+        tform_current[3, :3] = T_current
+        tform_current = np.linalg.inv(tform_current)
+        view.world_view_transform = torch.from_numpy(tform_current).float().cuda()
         rendering = render(view, gaussians, pipeline, background)["render"]
         torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
 
@@ -63,7 +71,7 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
         if not skip_train:
-            render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, num_frames=300, view_start=0, view_end=12)
+            render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, num_frames=300, view_start=0, view_end=30)
 
 
 if __name__ == "__main__":

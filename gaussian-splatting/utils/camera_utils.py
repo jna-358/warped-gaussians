@@ -14,6 +14,8 @@ import numpy as np
 from utils.general_utils import PILtoTorch
 from utils.graphics_utils import fov2focal
 import torch
+from scipy.spatial.transform import Rotation
+from scipy.spatial.transform import Slerp
 
 WARNED = False
 
@@ -92,3 +94,31 @@ def camera_to_JSON(id, camera : Camera):
         'fx' : fov2focal(camera.FovX, camera.width)
     }
     return camera_entry
+
+
+def interpolate_poses(poseA, poseB, alpha):
+    poseA_np = poseA.cpu().numpy()
+    poseB_np = poseB.cpu().numpy()
+
+    poseA_np = np.linalg.inv(poseA_np)
+    poseB_np = np.linalg.inv(poseB_np)
+
+    RA = poseA_np[:3, :3]
+    RB = poseB_np[:3, :3]
+    TA = poseA_np[3, :3]
+    TB = poseB_np[3, :3]
+
+    R_sequence = Rotation.from_matrix([RA, RB])
+    slerp = Slerp([0, 1], R_sequence)
+    R_current = slerp(alpha).as_matrix()
+    T_current = alpha * TB + (1 - alpha) * TA
+
+    tform_current = np.eye(4)
+    tform_current[:3, :3] = R_current
+    tform_current[3, :3] = T_current
+
+    tform_current = np.linalg.inv(tform_current)
+
+    tform_current_tensor = torch.from_numpy(tform_current).float().cuda()
+
+    return tform_current_tensor

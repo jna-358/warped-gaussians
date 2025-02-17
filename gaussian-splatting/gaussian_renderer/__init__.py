@@ -318,7 +318,8 @@ def merge_pc(*pointclouds):
 
 
 def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
-           scaling_modifier = 1.0, render_coords = False):
+           scaling_modifier = 1.0, render_coords = False, fisheye_transition = None,
+           third_person_pose = None):
     """
     Render the scene. 
     
@@ -447,7 +448,13 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
         x_res = torch.sin(theta_mod) * torch.cos(phi) * radius
         y_res = torch.sin(theta_mod) * torch.sin(phi) * radius
         z_res = torch.cos(theta_mod) * radius
-        means3D = torch.stack([x_res, y_res, z_res], dim=1)
+        means3D_new = torch.stack([x_res, y_res, z_res], dim=1)
+
+        if fisheye_transition is None:
+            means3D = means3D_new
+        else:
+            means3D = fisheye_transition * means3D_new + (1 - fisheye_transition) * means3D
+
 
     # Apply orthographic distortion
     if viewpoint_camera.ortho_scale is not None:
@@ -483,6 +490,17 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor,
     
     # Precompute covariance matrices
     cov3D = build_convariance_matrix(rotations, scales, scaling_modifier=scaling_modifier)
+
+    # Third person view
+    if third_person_pose is not None:
+        # Undo camera pose
+        means3D = (means3D - t) @ R
+
+        # Apply third person pose
+        third_person_extrinsics = third_person_pose
+        R = third_person_extrinsics[:3, :3].T
+        t = third_person_extrinsics[3, :3]
+        means3D = (means3D @ R.T) + t
 
     kwargs = {
         "means3D": means3D,

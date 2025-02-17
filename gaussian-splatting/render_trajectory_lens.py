@@ -23,6 +23,7 @@ from gaussian_renderer import GaussianModel
 from scipy.spatial.transform import Rotation
 from scipy.spatial.transform import Slerp
 import numpy as np
+from utils.camera_utils import interpolate_poses
 
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background, num_frames=100, view_start=0, view_end=-1):
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
@@ -48,30 +49,24 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     view = views[0]
     distortion_backup = view.distortion_params[3].item()
     distortion_range = (np.cos(np.linspace(0, 2*np.pi, num_frames)) / 2) + 0.5
-    distortion_range = distortion_range * (1.0 - 0.6) + 0.6
-
-    interp_range = -np.cos(np.linspace(0, 2*np.pi, num_frames)) / 2 + 0.5
-    interp_range *= 0.2
+    distortion_range = distortion_range * (1.0 - 0.24) + 0.24
 
     for idx in tqdm(range(num_frames), desc="Rendering progress"):
         view.distortion_params[3] = distortion_range[idx] * distortion_backup
 
-        R_first = np.array([[-0.92705891,  0.18158915, -0.32800481],
-            [ 0.37462881,  0.48289257, -0.79149733],
-            [ 0.01466375, -0.8566447 , -0.51569839]])
-        R_last = np.array([[-0.99874697, -0.03221657,  0.03829603],
-            [-0.04837185,  0.42524006, -0.90378706],
-            [ 0.01283191, -0.90450704, -0.4262656 ]])
-        T_first = np.array([ 3.226703 , -1.1035808,  4.4786425]) 
-        T_last = np.array([3.6878889, 0.4953386, 2.4650903])
-        
-        R_sequence = Rotation.from_matrix([R_first, R_last])
-        slerp = Slerp([0, 1], R_sequence)
-        T_current = T_first + (T_last - T_first) * interp_range[idx]
-        R_current = slerp(interp_range[idx]).as_matrix()
+        pose_first = views[0].world_view_transform
+        pose_last = views[30].world_view_transform
+        pose_current = interpolate_poses(pose_first, pose_last,  3e-3 * (idx / num_frames))
 
-        view.world_view_transform[:3, :3] = torch.from_numpy(R_current).float().cuda()
-        view.world_view_transform[3, :3] = torch.from_numpy(T_current).float().cuda()
+        view.world_view_transform = pose_current
+        
+        # R_sequence = Rotation.from_matrix([R_first, R_last])
+        # slerp = Slerp([0, 1], R_sequence)
+        # T_current = T_first + (T_last - T_first) * interp_range[idx]
+        # R_current = slerp(interp_range[idx]).as_matrix()
+
+        # view.world_view_transform[:3, :3] = torch.from_numpy(R_current).float().cuda()
+        # view.world_view_transform[3, :3] = torch.from_numpy(T_current).float().cuda()
         rendering = render(view, gaussians, pipeline, background)["render"]
         torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
 

@@ -60,7 +60,7 @@ tasks_scannet_extra = [
 
 # tasks_all = tasks_scannet + tasks_jacobian + tasks_degree
 
-tasks_all = tasks_scannet
+tasks_all = tasks_blender
 
 
 # Define a function to process a single string

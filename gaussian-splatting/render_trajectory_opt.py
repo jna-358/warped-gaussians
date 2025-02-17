@@ -30,6 +30,7 @@ import numpy as np
 import cv2
 import configparser
 from utils.general_utils import build_rotation, rotation_matrix_to_quaternion_batched
+from utils.camera_utils import interpolate_poses
 import time
 import json
 import shutil
@@ -37,6 +38,7 @@ from scipy.spatial.transform import Rotation
 from scipy.spatial.transform import Slerp
 
 torch.autograd.set_detect_anomaly(True)
+
 
 def upload_image(image, topic):
     image = Image.fromarray(image)
@@ -93,7 +95,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset, opt, pipe)
     gaussians = GaussianModel(dataset.sh_degree)
-    scene = Scene(dataset, gaussians)
+    scene = Scene(dataset, gaussians, shuffle=False)
     gaussians.training_setup(opt)
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
@@ -212,29 +214,58 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             #     torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
             
             # Render test view
-            if True:
+            if iteration % 5 == 0: # True:
                 torch.cuda.empty_cache()
 
                 frame_curr = num_rendered
                 num_rendered += 1
                 
-                R_first = np.array([[-0.92705891,  0.18158915, -0.32800481],
-                    [ 0.37462881,  0.48289257, -0.79149733],
-                    [ 0.01466375, -0.8566447 , -0.51569839]])
-                R_last = np.array([[-0.99874697, -0.03221657,  0.03829603],
-                    [-0.04837185,  0.42524006, -0.90378706],
-                    [ 0.01283191, -0.90450704, -0.4262656 ]])
-                T_first = np.array([ 3.226703 , -1.1035808,  4.4786425]) 
-                T_last = np.array([3.6878889, 0.4953386, 2.4650903])
+                # R_first = np.array([[ 8.98111615e-01, -4.39767584e-01, -8.27227617e-07],
+                #     [-4.87896990e-02, -9.96384791e-02, -9.93826815e-01],
+                #     [ 4.37052735e-01,  8.92567446e-01, -1.10942603e-01]])
+                # R_last = np.array([[-6.46459269e-01, -7.62948500e-01, -8.14103758e-07],
+                #     [-5.32627289e-03,  4.51410883e-03, -9.99975627e-01],
+                #     [ 7.62929908e-01, -6.46443508e-01, -6.98185941e-03]])
+                # T_first = np.array([17.81942  , 14.989132 ,  1.5306752])
+                # T_last = np.array([15.843243 , 22.691687 ,  1.5306752])
                 
-                R_sequence = Rotation.from_matrix([R_first, R_last])
-                slerp = Slerp([0, 1], R_sequence)
-                T_current = T_first + (T_last - T_first) * frame_curr / num_rendered_max
-                R_current = slerp(frame_curr / num_rendered_max).as_matrix()
-                viewpoint_cam_test = scene.getTrainCameras().copy()[0]
+                # R_sequence = Rotation.from_matrix([R_first, R_last])
+                # slerp = Slerp([0, 1], R_sequence)
+                # T_current = T_first + (T_last - T_first) * frame_curr / num_rendered_max
+                # R_current = slerp(frame_curr / num_rendered_max).as_matrix()
+                viewpoint_cam_test = scene.getTrainCameras().copy()[1]
 
-                viewpoint_cam_test.world_view_transform[:3, :3] = torch.from_numpy(R_current).float().cuda()
-                viewpoint_cam_test.world_view_transform[3, :3] = torch.from_numpy(T_current).float().cuda()
+                pose_first = scene.getTrainCameras().copy()[0].world_view_transform
+                pose_last = scene.getTrainCameras().copy()[30].world_view_transform
+                pose_current = interpolate_poses(pose_first, pose_last, frame_curr / num_rendered_max)
+
+                relative_progress = frame_curr / num_rendered_max
+                num_views = len(scene.getTrainCameras().copy())
+                current_view_index_float = relative_progress * (num_views - 1)
+                offset = current_view_index_float % 1
+                current_view_index = int(current_view_index_float)
+                next_view_index = current_view_index + 1
+
+                if offset < 1e-6:
+                    pose_current = scene.getTrainCameras().copy()[current_view_index].world_view_transform
+                else:
+                    pose_before = scene.getTrainCameras().copy()[current_view_index].world_view_transform
+                    pose_after = scene.getTrainCameras().copy()[next_view_index].world_view_transform
+                    pose_current = interpolate_poses(pose_before, pose_after, offset)
+
+                viewpoint_cam_test.world_view_transform = pose_current
+
+                # tform = np.eye(4)
+                # tform[:3, :3] = R_current
+                # tform[3, :3] = T_current
+                # tform = np.linalg.inv(tform)
+
+                # viewpoint_cam_test.world_view_transform = torch.from_numpy(tform).float().cuda()
+
+                # viewpoint_cam_test.world_view_transform[:3, :3] = torch.from_numpy(R_current).float().cuda()
+                # viewpoint_cam_test.world_view_transform[3, :3] = torch.from_numpy(T_current).float().cuda()
+
+
 
                 render_pkg_fisheye = render(viewpoint_cam_test, gaussians, pipe, background, 
                                             render_coords=False)
@@ -255,7 +286,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 #     images.append(depth_image)
                 image_test_all = concat_images(images)
 
-                upload_image(image_test_all, os.path.basename(dataset.source_path) + f"_{dataset.expname}")
+                upload_image(image_test_all, os.path.basename(dataset.source_path) + f"__{dataset.expname}")
 
                 os.makedirs(out_dir:=os.path.join(dataset.model_path, "trajectory_opt"), exist_ok=True)
                 torchvision.utils.save_image(image_test_fisheye, os.path.join(out_dir, f"{frame_curr:05d}.png"))

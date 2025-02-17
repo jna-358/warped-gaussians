@@ -15,3 +15,7 @@ cache/
 
 # Bash files
 bash_history.txt
+
+render_trajectory_*.py
+trajectories/
+dir_to_video_2.py
